@@ -1,7 +1,7 @@
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
 const { Api } = require('telegram');
-const { DEBUG } = require('../config/setting');
+const { DEBUG, MESSAGE_EFFECT_ID } = require('../config/setting');
 
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
@@ -51,8 +51,8 @@ class Account {
   async login(ctx, apiId, apiHash, phone) {
     if (!this.client) this.buildClient(apiId, apiHash);
 
-    const show = async (text) => {
-      try { const m = await ctx.reply(text); this.loadingMsgId = m.message_id; } catch {}
+    const show = async (text, opts = {}) => {
+      try { const m = await ctx.reply(text, opts); this.loadingMsgId = m.message_id; } catch {}
     };
     const clearLoading = async () => {
       if (this.loadingMsgId) {
@@ -67,13 +67,17 @@ class Account {
         phoneNumber: async () => phone,
         phoneCode: async () => {
           await clearLoading();
-          await show('Kirim kode OTP (boleh dipisah spasi), contoh: 1 2 3 4 5');
+          // Minta OTP + tombol batal inline
+          const kb = { reply_markup: { inline_keyboard: [[{ text: '❌ Batal', callback_data: 'action:cancel' }]] } };
+          await show('Kirim kode OTP (boleh dipisah spasi), contoh: 1 2 3 4 5', kb);
           const code = await new Promise(resolve => { this.pendingCode = (c) => resolve(String(c).replace(/\D+/g, '')); });
           return code;
         },
         password: async () => {
           await clearLoading();
-          await show('Akun Anda pakai 2FA. Kirim password sekarang:');
+          // Minta password 2FA + tombol batal inline
+          const kb = { reply_markup: { inline_keyboard: [[{ text: '❌ Batal', callback_data: 'action:cancel' }]] } };
+          await show('Akun Anda pakai 2FA. Kirim password sekarang:', kb);
           const pwd = await new Promise(resolve => { this.pendingPass = (p) => resolve(String(p).trim()); });
           return pwd;
         },
@@ -83,7 +87,10 @@ class Account {
       this.sess = this.client.session.save();
       this.authed = true;
       await clearLoading();
-      await ctx.reply('✅ Login berhasil!');
+
+      const opts = {};
+      if (MESSAGE_EFFECT_ID) opts.message_effect_id = MESSAGE_EFFECT_ID;
+      await ctx.reply('✅ Login berhasil!', opts);
 
       return true;
     } catch (e) {
@@ -106,7 +113,6 @@ class Account {
     const otpDigits = raw.replace(/\s+/g, '');
     if (this.pendingCode && /^\d{3,8}$/.test(otpDigits)) {
       const fn = this.pendingCode; this.pendingCode = null;
-      // Beri feedback ke user agar terasa responsif
       try { ctx.reply('⏳ Memverifikasi kode...').catch(()=>{}); } catch {}
       try { fn(otpDigits); } catch {}
       return true;
@@ -164,7 +170,6 @@ class Account {
         enabled: false
       }));
     } catch (e) {
-      // Ignore if not applicable
       this.log('TogglePreHistoryHidden warn:', e.message || e);
     }
 
@@ -174,7 +179,6 @@ class Account {
       const invite = await this.client.invoke(new Api.messages.ExportChatInvite({
         peer: inputPeerChannel
       }));
-      // Handle both single and plural responses
       if (invite && invite.link) link = invite.link;
       else if (invite && invite.invite && invite.invite.link) link = invite.invite.link;
       else if (Array.isArray(invite.invites) && invite.invites[0]?.link) link = invite.invites[0].link;
