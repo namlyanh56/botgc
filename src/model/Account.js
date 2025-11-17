@@ -134,6 +134,9 @@ class Account {
 
   // Main: create a supergroup, make history visible, export invite link
   async createSupergroupAndInvite({ title, about = '' }) {
+    // Pastikan terkoneksi
+    await this.ensureConnected();
+
     // 1) Create supergroup (megagroup)
     const updates = await this.client.invoke(new Api.channels.CreateChannel({
       title,
@@ -145,8 +148,9 @@ class Account {
     const chan = (updates.chats || []).find(c => c.className === 'Channel' || c._ === 'channel' || c.title === title);
     if (!chan) throw new Error('Channel tidak ditemukan dari hasil pembuatan.');
 
-    // Build InputChannel
+    // Build InputChannel dan InputPeerChannel
     const inputChannel = new Api.InputChannel({ channelId: chan.id, accessHash: chan.accessHash });
+    const inputPeerChannel = new Api.InputPeerChannel({ channelId: chan.id, accessHash: chan.accessHash });
 
     // 2) Ensure history visible (preHistoryHidden = false)
     try {
@@ -159,11 +163,11 @@ class Account {
       this.log('TogglePreHistoryHidden warn:', e.message || e);
     }
 
-    // 3) Export invite link
+    // 3) Export invite link (gunakan InputPeerChannel)
     let link = null;
     try {
       const invite = await this.client.invoke(new Api.messages.ExportChatInvite({
-        peer: inputChannel
+        peer: inputPeerChannel
       }));
       // Handle both single and plural responses
       if (invite && invite.link) link = invite.link;
