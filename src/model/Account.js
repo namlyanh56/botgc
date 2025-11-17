@@ -91,8 +91,10 @@ class Account {
       await ctx.reply('❌ Login gagal: ' + (e.message || String(e)));
       return false;
     } finally {
+      // Bersihkan state interaktif & session gate
       this.pendingCode = null;
       this.pendingPass = null;
+      try { ctx.session = null; } catch {}
     }
   }
 
@@ -104,12 +106,15 @@ class Account {
     const otpDigits = raw.replace(/\s+/g, '');
     if (this.pendingCode && /^\d{3,8}$/.test(otpDigits)) {
       const fn = this.pendingCode; this.pendingCode = null;
+      // Beri feedback ke user agar terasa responsif
+      try { ctx.reply('⏳ Memverifikasi kode...').catch(()=>{}); } catch {}
       try { fn(otpDigits); } catch {}
       return true;
     }
 
     if (this.pendingPass) {
       const fn = this.pendingPass; this.pendingPass = null;
+      try { ctx.reply('⏳ Memverifikasi password...').catch(()=>{}); } catch {}
       try { fn(raw); } catch {}
       return true;
     }
