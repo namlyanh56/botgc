@@ -1,0 +1,15 @@
+{
+  "name": "tg-group-maker-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot + userbot (GramJS) to bulk-create groups, set history visible, and return invite links. Keyboard menu. Login flow with OTP/2FA.",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "grammy": "^1.25.2",
+    "telegram": "^2.20.17"
+  }
+}
