@@ -39,9 +39,12 @@ module.exports = (bot) => {
     const phone = normalizePhone(ctx.message.contact?.phone_number || '');
     if (!/^\+\d{8,15}$/.test(phone)) return ctx.reply('❌ Format salah. Contoh: +6281234567890');
 
+    // Jangan await agar update OTP berikutnya tidak terblokir
     ctx.session = { act: 'login_waiting', id: acc.id };
-    await acc.login(ctx, API_ID, API_HASH, phone);
-    ctx.session = null;
+    acc.login(ctx, API_ID, API_HASH, phone).catch((e) => {
+      console.error('[login contact] error:', e);
+    });
+    // Jangan hapus ctx.session di sini; akan dibersihkan di akhir login()
   });
 
   bot.on('message:text', async (ctx, next) => {
@@ -54,9 +57,13 @@ module.exports = (bot) => {
     if (s.act === 'login_phone') {
       const phone = normalizePhone(ctx.message.text || '');
       if (!/^\+\d{8,15}$/.test(phone)) return ctx.reply('❌ Format salah. Contoh: +6281234567890');
+
+      // Jangan await agar update OTP berikutnya tidak terblokir
       ctx.session = { act: 'login_waiting', id: acc.id };
-      await acc.login(ctx, API_ID, API_HASH, phone);
-      ctx.session = null;
+      acc.login(ctx, API_ID, API_HASH, phone).catch((e) => {
+        console.error('[login text] error:', e);
+      });
+      // Jangan hapus ctx.session di sini; akan dibersihkan di akhir login()
       return;
     }
 
