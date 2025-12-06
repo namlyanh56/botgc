@@ -4,25 +4,32 @@ const { mainMenu, MENU } = require('./utils/menu');
 
 const auth = require('./handlers/auth');
 const groups = require('./handlers/groups');
+const hunter = require('./handlers/hunter');
 
 const bot = new Bot(BOT_TOKEN);
 
 bot.use(session({ initial: () => ({}) }));
 
-bot.command('start', async (ctx) => {
-  await ctx.reply('Selamat datang! Silakan pilih menu.', { reply_markup: mainMenu(ctx) });
+bot. command('start', async (ctx) => {
+  await ctx. reply('Selamat datang!  Silakan pilih menu. ', { reply_markup: mainMenu(ctx) });
 });
 
 // Tombol bantuan
-bot.hears(MENU.help, async (ctx) => {
+bot.hears(MENU. help, async (ctx) => {
   const text =
-`🔥 Bot Pembuat Grup Otomatis 🔥
+`🔥 Bot Pembuat Grup & Username Hunter 🔥
 
 Fungsi:
 • Login user (OTP/2FA) via bot
 • Buat banyak supergroup berurutan
 • Atur history agar terlihat
 • Kirim link undangan setiap grup
+
+🔎 Username Hunter:
+• Cari username channel yang tersedia
+• Wordlist otomatis (EN/ID/Jawa)
+• Filter: huruf a-z, panjang 5-8
+• Konfirmasi Terima/Tolak hasil
 
 Owner: @stuaart
 Note: Hindari jumlah terlalu besar untuk meminimalkan FLOOD_WAIT.`;
@@ -35,6 +42,7 @@ Note: Hindari jumlah terlalu besar untuk meminimalkan FLOOD_WAIT.`;
 
 auth(bot);
 groups(bot);
+hunter(bot);
 
 // Callback tombol Batal (inline)
 bot.callbackQuery('action:cancel', async (ctx) => {
@@ -42,13 +50,13 @@ bot.callbackQuery('action:cancel', async (ctx) => {
   try { ctx.session = null; } catch {}
   // Hapus pesan yang menampilkan tombol batal (opsional)
   try { await ctx.deleteMessage(); } catch {}
-  await ctx.reply('Kembali ke menu awal.', { reply_markup: mainMenu(ctx) });
+  await ctx.reply('Kembali ke menu awal. ', { reply_markup: mainMenu(ctx) });
 });
 
 // Fallback global
 bot.on('message:text', async (ctx) => {
-  // Biarkan handler lain menangani; kita hanya menjaga menu tetap mudah diakses.
+  // Biarkan handler lain menangani; kita hanya menjaga menu tetap mudah diakses. 
 });
 
 bot.catch((e) => console.error('Bot error:', e));
-bot.start().then(()=> console.log('Bot started'));
+bot.start(). then(()=> console.log('Bot started'));
