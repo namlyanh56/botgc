@@ -1,62 +1,245 @@
-const { BOT_TOKEN, MESSAGE_EFFECT_ID, HELP_EFFECT_ID } = require('./config/setting');
-const { Bot, session } = require('grammy');
-const { mainMenu, MENU } = require('./utils/menu');
+const { InlineKeyboard } = require('grammy');
+const { Api } = require('telegram');
+const { MENU, mainMenu } = require('../utils/menu');
+const { getAcc } = require('../utils/helper');
+const { WordlistManager } = require('../utils/wordlist');
+const HunterState = require('../model/HunterState');
+const { DELAY_MS, DEBUG } = require('../config/setting');
 
-const auth = require('./handlers/auth');
-const groups = require('./handlers/groups');
-const hunter = require('./handlers/hunter');
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function log(...a) { if (DEBUG) console.log('[Hunter]', ...a); }
 
-const bot = new Bot(BOT_TOKEN);
+// Store aktif hunting loops per user
+const activeHunts = new Map();
 
-bot.use(session({ initial: () => ({}) }));
+// Wordlist manager per user
+const wordlists = new Map();
 
-bot. command('start', async (ctx) => {
-  await ctx. reply('Selamat datang!  Silakan pilih menu. ', { reply_markup: mainMenu(ctx) });
-});
+function getWordlist(userId) {
+  if (!wordlists. has(userId)) {
+    wordlists.set(userId, new WordlistManager());
+  }
+  return wordlists. get(userId);
+}
 
-// Tombol bantuan
-bot.hears(MENU. help, async (ctx) => {
-  const text =
-`🔥 Bot Pembuat Grup & Username Hunter 🔥
+module.exports = (bot) => {
+  // Tombol Cari Username
+  bot.hears(MENU. huntUsername, async (ctx) => {
+    const acc = getAcc(ctx.from.id);
+    if (! acc?. authed) {
+      return ctx.reply('❌ Login user dulu lewat menu: ' + MENU.login, { reply_markup: mainMenu(ctx) });
+    }
 
-Fungsi:
-• Login user (OTP/2FA) via bot
-• Buat banyak supergroup berurutan
-• Atur history agar terlihat
-• Kirim link undangan setiap grup
+    const state = new HunterState(ctx.from.id);
+    if (state.hunting) {
+      return ctx.reply('⚠️ Pencarian sudah berjalan. Gunakan "⏹️ Stop Pencarian" untuk menghentikan. ', { reply_markup: mainMenu(ctx) });
+    }
 
-🔎 Username Hunter:
-• Cari username channel yang tersedia
-• Wordlist otomatis (EN/ID/Jawa)
-• Filter: huruf a-z, panjang 5-8
-• Konfirmasi Terima/Tolak hasil
+    state.hunting = true;
+    const wordlist = getWordlist(ctx.from.id);
 
-Owner: @stuaart
-Note: Hindari jumlah terlalu besar untuk meminimalkan FLOOD_WAIT.`;
+    await ctx.reply(`🔎 Memulai pencarian username.. .\n📊 Kandidat tersedia: ${wordlist.remaining()}\n⏱️ Estimasi total: ${wordlist. estimateTotal(). toLocaleString()}+`, { reply_markup: mainMenu(ctx) });
 
-  const effect = HELP_EFFECT_ID || MESSAGE_EFFECT_ID;
-  const opts = { reply_markup: mainMenu(ctx) };
-  if (effect) opts.message_effect_id = effect;
-  await ctx.reply(text, opts);
-});
+    // Simpan abort controller
+    const controller = { abort: false };
+    activeHunts.set(ctx.from. id, controller);
 
-auth(bot);
-groups(bot);
-hunter(bot);
+    // Loop pencarian
+    await huntLoop(ctx, acc, state, wordlist, controller);
+  });
 
-// Callback tombol Batal (inline)
-bot.callbackQuery('action:cancel', async (ctx) => {
-  try { await ctx.answerCallbackQuery(); } catch {}
-  try { ctx.session = null; } catch {}
-  // Hapus pesan yang menampilkan tombol batal (opsional)
-  try { await ctx.deleteMessage(); } catch {}
-  await ctx.reply('Kembali ke menu awal. ', { reply_markup: mainMenu(ctx) });
-});
+  // Tombol Stop Pencarian
+  bot.hears(MENU.stopHunt, async (ctx) => {
+    const controller = activeHunts.get(ctx. from.id);
+    if (controller) {
+      controller.abort = true;
+      activeHunts.delete(ctx.from. id);
+    }
 
-// Fallback global
-bot.on('message:text', async (ctx) => {
-  // Biarkan handler lain menangani; kita hanya menjaga menu tetap mudah diakses. 
-});
+    const state = new HunterState(ctx. from.id);
+    state.hunting = false;
 
-bot.catch((e) => console.error('Bot error:', e));
-bot.start(). then(()=> console.log('Bot started'));
+    await ctx.reply('⏹️ Pencarian dihentikan. ', { reply_markup: mainMenu(ctx) });
+  });
+
+  // Callback: Terima username
+  bot.callbackQuery('hunter:accept', async (ctx) => {
+    try { await ctx.answerCallbackQuery('✅ Username diterima! '); } catch {}
+
+    const state = new HunterState(ctx.from.id);
+    state.setResult('accepted');
+    state.hunting = false;
+
+    const controller = activeHunts.get(ctx. from.id);
+    if (controller) controller.abort = true;
+    activeHunts. delete(ctx.from.id);
+
+    try { await ctx.deleteMessage(); } catch {}
+    await ctx.reply(`✅ Username @${state.data.lastUsername} berhasil disimpan!`, { reply_markup: mainMenu(ctx) });
+  });
+
+  // Callback: Tolak username (hapus channel)
+  bot. callbackQuery('hunter:reject', async (ctx) => {
+    try { await ctx.answerCallbackQuery('❌ Menghapus channel... '); } catch {}
+
+    const state = new HunterState(ctx.from.id);
+    const acc = getAcc(ctx.from.id);
+
+    // Hapus channel
+    if (acc?. authed && state.data.lastChannelId && state.data.lastAccessHash) {
+      try {
+        await acc. ensureConnected();
+        const inputChannel = new Api. InputChannel({
+          channelId: BigInt(state.data.lastChannelId),
+          accessHash: BigInt(state.data.lastAccessHash)
+        });
+        await acc.client.invoke(new Api.channels. DeleteChannel({ channel: inputChannel }));
+        log('Channel deleted:', state.data.lastUsername);
+      } catch (e) {
+        log('Delete channel error:', e. message);
+      }
+    }
+
+    state. setResult('rejected');
+    state.hunting = false;
+
+    const controller = activeHunts.get(ctx.from.id);
+    if (controller) controller.abort = true;
+    activeHunts. delete(ctx.from.id);
+
+    try { await ctx. deleteMessage(); } catch {}
+    await ctx.reply(`❌ Username @${state.data.lastUsername} ditolak dan channel dihapus. `, { reply_markup: mainMenu(ctx) });
+  });
+};
+
+/**
+ * Main hunting loop
+ */
+async function huntLoop(ctx, acc, state, wordlist, controller) {
+  const userId = ctx.from. id;
+  const delayMs = Math.max(DELAY_MS, 2000);
+
+  let checked = 0;
+  let statusMsgId = null;
+
+  try {
+    const msg = await ctx.reply('🔍 Mencari username yang tersedia...');
+    statusMsgId = msg.message_id;
+  } catch {}
+
+  while (! controller.abort && state.hunting) {
+    const username = wordlist.next();
+    checked++;
+    state.incrementChecked();
+
+    log(`Checking: ${username} (${checked})`);
+
+    // Update status setiap 10 pengecekan
+    if (checked % 10 === 0 && statusMsgId) {
+      try {
+        await ctx.api.editMessageText(userId, statusMsgId, 
+          `🔍 Sudah cek ${checked} username.. .\n📝 Terakhir: ${username}\n📊 Sisa batch: ${wordlist. remaining()}`
+        );
+      } catch {}
+    }
+
+    try {
+      await acc.ensureConnected();
+
+      // Cek ketersediaan username
+      const available = await acc.client.invoke(new Api.account.CheckUsername({ username }));
+
+      if (available) {
+        log(`Username available: ${username}`);
+
+        // Buat broadcast channel
+        const updates = await acc.client.invoke(new Api.channels.CreateChannel({
+          title: username,
+          about: `Channel for @${username}`,
+          broadcast: true,
+          megagroup: false
+        }));
+
+        const chan = (updates.chats || []).find(c => c.className === 'Channel' || c.title === username);
+        if (!chan) {
+          log('Channel not found after creation');
+          await sleep(delayMs);
+          continue;
+        }
+
+        const inputChannel = new Api.InputChannel({
+          channelId: chan.id,
+          accessHash: chan. accessHash
+        });
+
+        // Set username
+        try {
+          await acc.client.invoke(new Api.channels.UpdateUsername({
+            channel: inputChannel,
+            username: username
+          }));
+
+          log(`Username set: @${username}`);
+
+          state.setLastClaim(username, chan.id, chan.accessHash);
+          state.hunting = false;
+
+          if (statusMsgId) {
+            try { await ctx.api.deleteMessage(userId, statusMsgId); } catch {}
+          }
+
+          const kb = new InlineKeyboard()
+            .text('✅ Terima', 'hunter:accept')
+            .text('❌ Tolak', 'hunter:reject');
+
+          await ctx.reply(
+            `🎉 Berhasil klaim @${username}!\n\n📊 Total dicek: ${checked}\n\nPilih aksi:`,
+            { reply_markup: kb }
+          );
+
+          activeHunts.delete(userId);
+          return;
+
+        } catch (e) {
+          log('UpdateUsername failed:', e.message);
+          try {
+            await acc.client.invoke(new Api.channels.DeleteChannel({ channel: inputChannel }));
+          } catch {}
+        }
+
+      } else {
+        log(`Username taken: ${username}`);
+      }
+
+    } catch (e) {
+      log('Check error:', e.message);
+
+      // Handle FLOOD_WAIT
+      if (e.message && e.message.includes('FLOOD_WAIT')) {
+        const waitMatch = e.message. match(/FLOOD_WAIT_(\d+)/);
+        const waitTime = waitMatch ? parseInt(waitMatch[1], 10) : 30;
+
+        if (statusMsgId) {
+          try {
+            await ctx. api.editMessageText(userId, statusMsgId, `⚠️ Rate limit! Menunggu ${waitTime} detik...`);
+          } catch {}
+        }
+
+        await sleep(waitTime * 1000);
+        continue;
+      }
+    }
+
+    await sleep(delayMs);
+  }
+
+  if (statusMsgId) {
+    try { await ctx.api. deleteMessage(userId, statusMsgId); } catch {}
+  }
+
+  if (! state.data.lastUsername) {
+    await ctx.reply(`⏹️ Pencarian dihentikan.\n📊 Total dicek: ${checked}`, { reply_markup: mainMenu(ctx) });
+  }
+
+  activeHunts.delete(userId);
+}
