@@ -16,33 +16,36 @@ const activeHunts = new Map();
 const wordlists = new Map();
 
 function getWordlist(userId) {
-  if (!wordlists. has(userId)) {
+  if (!wordlists.has(userId)) {
     wordlists.set(userId, new WordlistManager());
   }
-  return wordlists. get(userId);
+  return wordlists.get(userId);
 }
 
 module.exports = (bot) => {
   // Tombol Cari Username
-  bot.hears(MENU. huntUsername, async (ctx) => {
+  bot.hears(MENU.huntUsername, async (ctx) => {
     const acc = getAcc(ctx.from.id);
-    if (! acc?. authed) {
+    if (!acc?.authed) {
       return ctx.reply('❌ Login user dulu lewat menu: ' + MENU.login, { reply_markup: mainMenu(ctx) });
     }
 
     const state = new HunterState(ctx.from.id);
     if (state.hunting) {
-      return ctx.reply('⚠️ Pencarian sudah berjalan. Gunakan "⏹️ Stop Pencarian" untuk menghentikan. ', { reply_markup: mainMenu(ctx) });
+      return ctx.reply('⚠️ Pencarian sudah berjalan. Gunakan "⏹️ Stop Pencarian" untuk menghentikan.', { reply_markup: mainMenu(ctx) });
     }
 
     state.hunting = true;
     const wordlist = getWordlist(ctx.from.id);
 
-    await ctx.reply(`🔎 Memulai pencarian username.. .\n📊 Kandidat tersedia: ${wordlist.remaining()}\n⏱️ Estimasi total: ${wordlist. estimateTotal(). toLocaleString()}+`, { reply_markup: mainMenu(ctx) });
+    await ctx.reply(
+      `🔎 Memulai pencarian username...\n📊 Kandidat tersedia: ${wordlist.remaining()}\n⏱️ Estimasi total: ${wordlist.estimateTotal().toLocaleString()}+`,
+      { reply_markup: mainMenu(ctx) }
+    );
 
     // Simpan abort controller
     const controller = { abort: false };
-    activeHunts.set(ctx.from. id, controller);
+    activeHunts.set(ctx.from.id, controller);
 
     // Loop pencarian
     await huntLoop(ctx, acc, state, wordlist, controller);
@@ -50,65 +53,65 @@ module.exports = (bot) => {
 
   // Tombol Stop Pencarian
   bot.hears(MENU.stopHunt, async (ctx) => {
-    const controller = activeHunts.get(ctx. from.id);
+    const controller = activeHunts.get(ctx.from.id);
     if (controller) {
       controller.abort = true;
-      activeHunts.delete(ctx.from. id);
+      activeHunts.delete(ctx.from.id);
     }
 
-    const state = new HunterState(ctx. from.id);
+    const state = new HunterState(ctx.from.id);
     state.hunting = false;
 
-    await ctx.reply('⏹️ Pencarian dihentikan. ', { reply_markup: mainMenu(ctx) });
+    await ctx.reply('⏹️ Pencarian dihentikan.', { reply_markup: mainMenu(ctx) });
   });
 
   // Callback: Terima username
   bot.callbackQuery('hunter:accept', async (ctx) => {
-    try { await ctx.answerCallbackQuery('✅ Username diterima! '); } catch {}
+    try { await ctx.answerCallbackQuery('✅ Username diterima!'); } catch {}
 
     const state = new HunterState(ctx.from.id);
     state.setResult('accepted');
     state.hunting = false;
 
-    const controller = activeHunts.get(ctx. from.id);
+    const controller = activeHunts.get(ctx.from.id);
     if (controller) controller.abort = true;
-    activeHunts. delete(ctx.from.id);
+    activeHunts.delete(ctx.from.id);
 
     try { await ctx.deleteMessage(); } catch {}
     await ctx.reply(`✅ Username @${state.data.lastUsername} berhasil disimpan!`, { reply_markup: mainMenu(ctx) });
   });
 
   // Callback: Tolak username (hapus channel)
-  bot. callbackQuery('hunter:reject', async (ctx) => {
-    try { await ctx.answerCallbackQuery('❌ Menghapus channel... '); } catch {}
+  bot.callbackQuery('hunter:reject', async (ctx) => {
+    try { await ctx.answerCallbackQuery('❌ Menghapus channel...'); } catch {}
 
     const state = new HunterState(ctx.from.id);
     const acc = getAcc(ctx.from.id);
 
     // Hapus channel
-    if (acc?. authed && state.data.lastChannelId && state.data.lastAccessHash) {
+    if (acc?.authed && state.data.lastChannelId && state.data.lastAccessHash) {
       try {
-        await acc. ensureConnected();
-        const inputChannel = new Api. InputChannel({
+        await acc.ensureConnected();
+        const inputChannel = new Api.InputChannel({
           channelId: BigInt(state.data.lastChannelId),
           accessHash: BigInt(state.data.lastAccessHash)
         });
-        await acc.client.invoke(new Api.channels. DeleteChannel({ channel: inputChannel }));
+        await acc.client.invoke(new Api.channels.DeleteChannel({ channel: inputChannel }));
         log('Channel deleted:', state.data.lastUsername);
       } catch (e) {
-        log('Delete channel error:', e. message);
+        log('Delete channel error:', e.message);
       }
     }
 
-    state. setResult('rejected');
+    state.setResult('rejected');
     state.hunting = false;
 
     const controller = activeHunts.get(ctx.from.id);
     if (controller) controller.abort = true;
-    activeHunts. delete(ctx.from.id);
+    activeHunts.delete(ctx.from.id);
 
-    try { await ctx. deleteMessage(); } catch {}
-    await ctx.reply(`❌ Username @${state.data.lastUsername} ditolak dan channel dihapus. `, { reply_markup: mainMenu(ctx) });
+    try { await ctx.deleteMessage(); } catch {}
+    await ctx.reply(`❌ Username @${state.data.lastUsername} ditolak dan channel dihapus.`, { reply_markup: mainMenu(ctx) });
   });
 };
 
@@ -116,7 +119,7 @@ module.exports = (bot) => {
  * Main hunting loop
  */
 async function huntLoop(ctx, acc, state, wordlist, controller) {
-  const userId = ctx.from. id;
+  const userId = ctx.from.id;
   const delayMs = Math.max(DELAY_MS, 2000);
 
   let checked = 0;
@@ -127,7 +130,7 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
     statusMsgId = msg.message_id;
   } catch {}
 
-  while (! controller.abort && state.hunting) {
+  while (!controller.abort && state.hunting) {
     const username = wordlist.next();
     checked++;
     state.incrementChecked();
@@ -137,8 +140,10 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
     // Update status setiap 10 pengecekan
     if (checked % 10 === 0 && statusMsgId) {
       try {
-        await ctx.api.editMessageText(userId, statusMsgId, 
-          `🔍 Sudah cek ${checked} username.. .\n📝 Terakhir: ${username}\n📊 Sisa batch: ${wordlist. remaining()}`
+        await ctx.api.editMessageText(
+          userId,
+          statusMsgId,
+          `🔍 Sudah cek ${checked} username...\n📝 Terakhir: ${username}\n📊 Sisa batch: ${wordlist.remaining()}`
         );
       } catch {}
     }
@@ -169,14 +174,14 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
 
         const inputChannel = new Api.InputChannel({
           channelId: chan.id,
-          accessHash: chan. accessHash
+          accessHash: chan.accessHash
         });
 
         // Set username
         try {
           await acc.client.invoke(new Api.channels.UpdateUsername({
             channel: inputChannel,
-            username: username
+            username
           }));
 
           log(`Username set: @${username}`);
@@ -216,12 +221,12 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
 
       // Handle FLOOD_WAIT
       if (e.message && e.message.includes('FLOOD_WAIT')) {
-        const waitMatch = e.message. match(/FLOOD_WAIT_(\d+)/);
+        const waitMatch = e.message.match(/FLOOD_WAIT_(\d+)/);
         const waitTime = waitMatch ? parseInt(waitMatch[1], 10) : 30;
 
         if (statusMsgId) {
           try {
-            await ctx. api.editMessageText(userId, statusMsgId, `⚠️ Rate limit! Menunggu ${waitTime} detik...`);
+            await ctx.api.editMessageText(userId, statusMsgId, `⚠️ Rate limit! Menunggu ${waitTime} detik...`);
           } catch {}
         }
 
@@ -234,10 +239,10 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
   }
 
   if (statusMsgId) {
-    try { await ctx.api. deleteMessage(userId, statusMsgId); } catch {}
+    try { await ctx.api.deleteMessage(userId, statusMsgId); } catch {}
   }
 
-  if (! state.data.lastUsername) {
+  if (!state.data.lastUsername) {
     await ctx.reply(`⏹️ Pencarian dihentikan.\n📊 Total dicek: ${checked}`, { reply_markup: mainMenu(ctx) });
   }
 
