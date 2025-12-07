@@ -7,7 +7,6 @@ const HunterState = require('../model/HunterState');
 const { DELAY_MS, DEBUG } = require('../config/setting');
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-// Sleep yang bisa di-interrupt oleh abort flag
 async function abortableSleep(controller, ms, step = 300) {
   let remain = ms;
   while (!controller.abort && remain > 0) {
@@ -18,18 +17,30 @@ async function abortableSleep(controller, ms, step = 300) {
 }
 function log(...a) { if (DEBUG) console.log('[Hunter]', ...a); }
 
-// Store aktif hunting loops per user
 const activeHunts = new Map();
-// Wordlist manager per user
 const wordlists = new Map();
-
 function getWordlist(userId) {
   if (!wordlists.has(userId)) wordlists.set(userId, new WordlistManager());
   return wordlists.get(userId);
 }
 
+// Detect limit on channel creation/update
+function isChannelLimitError(e) {
+  if (!e || !e.message) return null;
+  const msg = e.message;
+  if (msg.includes('FLOOD_WAIT_')) {
+    const m = msg.match(/FLOOD_WAIT_(\d+)/);
+    const seconds = m ? parseInt(m[1], 10) : 60;
+    return { type: 'flood', waitSec: seconds };
+  }
+  if (msg.includes('CHANNELS_TOO_MUCH')) {
+    // Biasanya limit harian; tidak ada wait time pasti
+    return { type: 'too_many_channels', waitSec: null };
+  }
+  return null;
+}
+
 module.exports = (bot) => {
-  // Tombol Cari Username
   bot.hears(MENU.huntUsername, async (ctx) => {
     const acc = getAcc(ctx.from.id);
     if (!acc?.authed) {
@@ -55,7 +66,6 @@ module.exports = (bot) => {
     await huntLoop(ctx, acc, state, wordlist, controller);
   });
 
-  // Tombol Stop Pencarian
   bot.hears(MENU.stopHunt, async (ctx) => {
     const controller = activeHunts.get(ctx.from.id);
     if (controller) controller.abort = true;
@@ -67,30 +77,23 @@ module.exports = (bot) => {
     await ctx.reply('⏹️ Pencarian dihentikan.', { reply_markup: mainMenu(ctx) });
   });
 
-  // Callback: Terima username
   bot.callbackQuery('hunter:accept', async (ctx) => {
     try { await ctx.answerCallbackQuery('✅ Username diterima!'); } catch {}
-
     const state = new HunterState(ctx.from.id);
     state.setResult('accepted');
     state.hunting = false;
-
     const controller = activeHunts.get(ctx.from.id);
     if (controller) controller.abort = true;
     activeHunts.delete(ctx.from.id);
-
     try { await ctx.deleteMessage(); } catch {}
     await ctx.reply(`✅ Username @${state.data.lastUsername} berhasil disimpan!`, { reply_markup: mainMenu(ctx) });
   });
 
-  // Callback: Tolak username (hapus channel)
   bot.callbackQuery('hunter:reject', async (ctx) => {
     try { await ctx.answerCallbackQuery('❌ Menghapus channel...'); } catch {}
-
     const state = new HunterState(ctx.from.id);
     const acc = getAcc(ctx.from.id);
 
-    // Hapus channel jika ada
     if (acc?.authed && state.data.lastChannelId && state.data.lastAccessHash) {
       try {
         await acc.ensureConnected();
@@ -107,7 +110,6 @@ module.exports = (bot) => {
 
     state.setResult('rejected');
     state.hunting = false;
-
     const controller = activeHunts.get(ctx.from.id);
     if (controller) controller.abort = true;
     activeHunts.delete(ctx.from.id);
@@ -145,7 +147,6 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
       } catch {}
     }
 
-    // Cek abort seawal mungkin
     if (controller.abort) break;
 
     try {
@@ -214,7 +215,18 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
         return;
 
       } catch (e) {
-        log('UpdateUsername failed (likely sudah diambil race):', e.message);
+        const limit = isChannelLimitError(e);
+        if (limit) {
+          state.hunting = false;
+          controller.abort = true;
+          activeHunts.delete(userId);
+          const msg = limit.waitSec
+            ? `⚠️ Akun limit saat set username.\nTunggu ~${Math.ceil(limit.waitSec / 60)} menit lalu coba lagi.`
+            : '⚠️ Akun limit jumlah channel. Hentikan pencarian.';
+          await ctx.reply(msg, { reply_markup: mainMenu(ctx) });
+          break;
+        }
+        log('UpdateUsername failed (likely race):', e.message);
         try {
           await acc.client.invoke(new Api.channels.DeleteChannel({ channel: inputChannel }));
         } catch {}
