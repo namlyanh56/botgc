@@ -3,7 +3,7 @@ const { getUser, getAcc } = require('../utils/helper');
 const Account = require('../model/Account');
 const { API_ID, API_HASH } = require('../config/setting');
 const { Keyboard } = require('grammy');
-const { removeSession } = require('../utils/sessionStore'); // <— baru
+const { removeSession } = require('../utils/sessionStore');
 
 function normalizePhone(raw) {
   if (!raw) return '';
@@ -19,7 +19,10 @@ module.exports = (bot) => {
   bot.hears(MENU.login, async (ctx) => {
     const current = getAcc(ctx.from.id);
     if (current?.authed) {
-      return ctx.reply('✅ Anda sudah login.', { reply_markup: mainMenu(ctx) });
+      return ctx.reply('✅ *Akun sudah terhubung.*', { 
+        reply_markup: mainMenu(ctx), 
+        parse_mode: 'Markdown' 
+      });
     }
 
     const u = getUser(ctx.from.id);
@@ -27,13 +30,17 @@ module.exports = (bot) => {
     u.accounts.set(acc.id, acc);
     u.active = acc.id;
 
-    await ctx.reply('📱 Kirim Nomor Telepon Anda (format: +628xxx) atau bagikan kontak.', {
-      reply_markup: inlineCancelKb()
-    });
+    const msg = 
+`🔐 *AUTHENTICATION REQUIRED*
 
-    const kb = new Keyboard().requestContact('📂 Kirim Kontak 📂').resized();
+Silakan masukkan Nomor Telepon akun Telegram yang akan dihubungkan.
+_Format: +628xxx_
+
+Atau gunakan tombol di bawah untuk berbagi kontak secara aman.`;
+
+    const kb = new Keyboard().requestContact('📲 Bagikan Kontak Saya').resized();
     ctx.session = { act: 'login_phone', id: acc.id };
-    await ctx.reply('Atau tap tombol di bawah untuk membagikan kontak:', { reply_markup: kb });
+    await ctx.reply(msg, { reply_markup: kb, parse_mode: 'Markdown' });
   });
 
   // Logout
@@ -45,13 +52,14 @@ module.exports = (bot) => {
       if (acc.client) {
         try { await acc.client.disconnect(); } catch {}
       }
-      removeSession(ctx.from.id, acc.id); // <— hapus sesi tersimpan
+      removeSession(ctx.from.id, acc.id);
       u.accounts.delete(acc.id);
       u.active = null;
     }
 
-    await ctx.reply('🚪 Berhasil logout. Silakan login kembali jika diperlukan.', {
-      reply_markup: mainMenu(ctx)
+    await ctx.reply('🔓 *Sesi diputuskan.* Data lokal telah dihapus.', {
+      reply_markup: mainMenu(ctx),
+      parse_mode: 'Markdown'
     });
   });
 
@@ -62,11 +70,14 @@ module.exports = (bot) => {
 
     const u = getUser(ctx.from.id);
     const acc = u.accounts.get(s.id);
-    if (!acc) return ctx.reply('❌ Sesi login tidak ditemukan. Ulangi.', { reply_markup: mainMenu(ctx) });
+    if (!acc) return ctx.reply('❌ Sesi tidak valid. Ulangi.', { reply_markup: mainMenu(ctx) });
 
     const phone = normalizePhone(ctx.message.contact?.phone_number || '');
     if (!/^\+\d{8,15}$/.test(phone)) {
-      return ctx.reply('❌ Format salah. Contoh: +6281234567890', { reply_markup: inlineCancelKb() });
+      return ctx.reply('⚠️ *Format salah.* Gunakan +62...', { 
+        reply_markup: inlineCancelKb(),
+        parse_mode: 'Markdown'
+      });
     }
 
     ctx.session = { act: 'login_waiting', id: acc.id };
@@ -88,7 +99,10 @@ module.exports = (bot) => {
     if (s.act === 'login_phone') {
       const phone = normalizePhone(ctx.message.text || '');
       if (!/^\+\d{8,15}$/.test(phone)) {
-        return ctx.reply('❌ Format salah. Contoh: +6281234567890', { reply_markup: inlineCancelKb() });
+        return ctx.reply('⚠️ *Format salah.* Gunakan +62...', { 
+          reply_markup: inlineCancelKb(),
+          parse_mode: 'Markdown'
+        });
       }
 
       ctx.session = { act: 'login_waiting', id: acc.id };
