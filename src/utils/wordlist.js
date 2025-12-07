@@ -1,5 +1,5 @@
 // Wordlist Indonesia fokus, panjang 5–8 huruf, kombinasi ringan.
-// Kombinasi: prefix (di, ke, se, pro, mega), suffix (ku, mu, id, indo), short+kata & kata+short.
+// Tidak ada kata Inggris seperti "pro" atau "giga".
 
 function isValidUsername(str) {
   return /^[a-z]{5,8}$/.test(str);
@@ -14,43 +14,57 @@ function shuffle(arr) {
   return a;
 }
 
-// Ribuan kata umum Indonesia (cuplikan; tambahkan sesuai kebutuhan).
-// Pastikan semua lowercase, tanpa spasi, 3–8 huruf (nanti difilter 5–8).
+// Kata dasar (pilihan 5–8 huruf; tambahkan sesuka Anda, tetap 5–8 huruf)
 const SEED_ID = [
+  // Umum/objek/tempat
+  'rumah','jalan','makan','tempat','orang','tidur','langit','tanah','gunung','pohon','hutan','sepeda',
+  'masjid','gereja','pasar','pabrik','kantor','taman','halaman','aliran','sungai','udara','bulan','matahari',
+  'rambu','pintu','jendela','sampah','ladang','sekolah','kuliah','petani','nelayan','pekerja','tukang',
+  'dokter','perawat','apotek','penjual','pembeli','barang','kertas','meja','kursi','tas','bunga','pantai','ombak',
   // Sifat/positif
-  'bagus','hebat','keren','mantap','juara','unggul','sakti','pintar','cerdas','bijak','arif','pandai','mahir','ahli','pakar',
-  'berani','gagah','tangguh','kuat','kokoh','teguh','solid','sigap','cepat','lincah',
-  'lancar','mulus','aman','selamat','damai','sejuk','nyaman','santai','tenang',
-  'indah','elok','asri','segar','bersih','rapi','wangi','harum','cerah','terang','cahya','kilau',
-  'mulia','agung','utama','utama','prima','sakti','sakti','patuh','taat','pasti','tepat','sadar',
-  // Alam/unsur
-  'langit','bumi','laut','samudra','sungai','danau','hutan','rimba','padang','sawah',
-  'awan','hujan','angin','badai','petir','guntur','gelap','terang','senja','fajar',
-  'api','air','tanah','udara','cahaya','kilau','bintang','bulan','mentari','matahari',
-  'gunung','bukit','lembah','pantai','pesisir','ombak','karang','pohon','daun','bunga',
+  'bagus','hebat','keren','mantap','juara','unggul','sakti','pintar','cerdas','bijak','tangguh','kokoh','teguh','solid',
+  'sigap','lancar','nyaman','santai','tenang','indah','asri','segar','bersih','rapi','harum','cerah','terang','cahya','kilau',
+  'mulia','agung','utama','prima','patuh','taat','pasti','tepat','sadar',
   // Modern/tech
-  'digital','tekno','online','siber','gadget','aplikasi','produk','layanan','transaksi','dompet',
-  'bayar','kirim','ambil','tarik','tabung','kredit','debit','nabung','kelas','konten',
-  // Ekspresi umum
-  'sehat','sejahtera','makmur','rezeki','jualan','dagang','pangan','warung','toko','pasar',
-  'insyaallah','berkah','rahmat','syukur','amanah','percaya','harap','doa','ikhtiar','usaha',
-  // Keren/trendi
-  'trendi','viral','kekinian','gaul','asik','seru','ramah','ceria','humor','lucu',
-  'kocak','epik','legendar','mewah','premium','eksklusif','resmi','pasti','valid','aman',
-  // Tambahkan lebih banyak kata umum Indonesia di sini
+  'jaringan','komputer','aplikasi','server','browser','sistem','software','hardware','gadget','cloud','database','virus',
+  'malware','protokol','firewall','keamanan','backup','upload','download','akses','update','plugin','cache','login','logout',
+  'error','crash','sensor','monitor','virtual','hosting','binary','token','data','kode','debug',
+  // Kesehatan
+  'anatomi','patologi','terapi','vaksin','infeksi','pasien','klinik','medis','darah','jantung','ginjal','kanker',
+  'sakit','demam','batuk','imun','radang','diagnosa','tubuh','polusi','operasi','cedera','nyeri',
+  // Ekonomi
+  'pasar','modal','harga','kredit','utang','saldo','biaya','profit','resesi','inflasi','bursa','saham',
+  'pajak','pedagang','iklan','produksi','konsumsi','pinjam','bunga','ekonomi','devisa','ekspor','impor',
+  // Hukum
+  'hukum','kontrak','undang','pidana','aturan','saksi','hakim','sidang','bukti','pasal','kasus','vonis',
+  'dakwaan','tahanan','eksekusi','jaksa','jaminan','gugat','putusan','advokat','pelaku',
+  // Pendidikan
+  'siswa','dosen','ujian','evaluasi','pelajaran','akademik','kelas','materi','akademi','kursus','diploma','ijazah',
+  'rapor','belajar','latihan','studi','topik','soal','nilai','pengajar','program',
+  // Lingkungan
+  'ekologi','polusi','sampah','limbah','energi','karbon','iklim','cuaca','plastik','terumbu','gempa','badai',
+  'banjir','selam','organik','pengair','aliran',
+  // Seni & desain
+  'desain','grafis','lukisan','warna','sketsa','karya','animasi','gambar','kreatif','digital','ruang','elemen',
+  'visual','proyek','motif','media','konsep','estetika',
+  // Olahraga
+  'atlet','olahraga','latihan','pelatih','sepak','tenis','basket','futsal','pemain','wasit','lapangan','renang','lompat','gulat',
+  'senam','taktik','strategi','fitness',
+  // Industri & manufaktur
+  'produksi','mesin','pabrik','bahan','kualitas','material','logistik','kontrol','komponen','operasi'
 ];
 
-// Short kata Indonesia untuk kombinasi
+// Short kata Indonesia (tanpa bahasa Inggris)
 const SHORT_ID = [
-  'pro','mega','super','giga','baru','aman','asik','seru','cepat','santai','hepi',
-  'hemat','murah','kaya','cuan','untung','sukses','juara','unggul'
+  'baru','aman','asik','seru','cepat','santai','hepi','hemat','murah','kaya','cuan','untung',
+  'sukses','juara','unggul','lancar','amanah','rapi','bersih','sehat'
 ];
 
-// Prefix/suffix ringan
-const PREFIX_ID = ['di','ke','se','pro','mega','super'];
-const SUFFIX_ID = ['ku','mu','id','indo'];
+// Prefix/suffix ringan (Indonesia) – mega/super dihapus
+const PREFIX_ID = ['di','ke','se','ber','ter'];
+const SUFFIX_ID = ['ku','mu','id','indo','kita'];
 
-// Untuk menjaga memori: batasi jumlah kombinasi short+short, dll.
+// Kombinasi dibatasi agar tetap wajar
 class WordlistManager {
   constructor() {
     this.candidates = [];
@@ -86,7 +100,7 @@ class WordlistManager {
       }
     }
 
-    // 4) short + seed dan seed + short (dalam bahasa Indonesia saja)
+    // 4) short + seed dan seed + short
     for (const w of SEED_ID) {
       for (const s of SHORT_ID) {
         const v1 = (s + w).toLowerCase();
