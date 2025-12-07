@@ -2,7 +2,7 @@ const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
 const { Api } = require('telegram');
 const { DEBUG, MESSAGE_EFFECT_ID } = require('../config/setting');
-const { saveSession } = require('../utils/sessionStore'); // <— baru
+const { saveSession } = require('../utils/sessionStore');
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -47,7 +47,7 @@ class Account {
     }
   }
 
-  async login(ctx, apiId, apiHash, phone, getMainMenu) {
+  async login(ctx, apiId, apiHash, phone, getMainMenu, otpRetry = 0) {
     if (!this.client) this.buildClient(apiId, apiHash);
 
     const show = async (text, opts = {}) => {
@@ -92,7 +92,7 @@ class Account {
 
       this.sess = this.client.session.save();
       this.authed = true;
-      saveSession(this.ownerId, this.id, this.sess); // <— simpan sesi
+      saveSession(this.ownerId, this.id, this.sess);
       await clearLoading();
 
       const opts = {};
@@ -102,16 +102,26 @@ class Account {
       }
 
       await ctx.reply('✅ Login berhasil! Silakan pilih menu di bawah:', opts);
-
       return true;
+
     } catch (e) {
       await clearLoading();
+
+      // Izinkan satu kali retry OTP jika salah
+      if (e.message && e.message.includes('PHONE_CODE_INVALID') && otpRetry < 1) {
+        await ctx.reply('⚠️ Kode OTP salah. Coba lagi, kirim OTP yang benar.');
+        this.pendingCode = null;
+        this.pendingPass = null;
+        try { ctx.session = { act: 'login_waiting', id: this.id }; } catch {}
+        return this.login(ctx, apiId, apiHash, phone, getMainMenu, otpRetry + 1);
+      }
+
       await ctx.reply('❌ Login gagal: ' + (e.message || String(e)));
       return false;
+
     } finally {
       this.pendingCode = null;
       this.pendingPass = null;
-      try { ctx.session = null; } catch {}
     }
   }
 
@@ -148,9 +158,7 @@ class Account {
 
   normalizeNamesFromPrefix(prefix, count) {
     const out = [];
-    for (let i = 1; i <= count; i++) {
-      out.push(`${prefix} ${i}`);
-    }
+    for (let i = 1; i <= count; i++) out.push(`${prefix} ${i}`);
     return out;
   }
 
@@ -180,9 +188,7 @@ class Account {
 
     let link = null;
     try {
-      const invite = await this.client.invoke(new Api.messages.ExportChatInvite({
-        peer: inputPeerChannel
-      }));
+      const invite = await this.client.invoke(new Api.messages.ExportChatInvite({ peer: inputPeerChannel }));
       if (invite && invite.link) link = invite.link;
       else if (invite && invite.invite && invite.invite.link) link = invite.invite.link;
       else if (Array.isArray(invite.invites) && invite.invites[0]?.link) link = invite.invites[0].link;
