@@ -24,7 +24,6 @@ function getWordlist(userId) {
   return wordlists.get(userId);
 }
 
-// Detect limit on channel creation/update
 function isChannelLimitError(e) {
   if (!e || !e.message) return null;
   const msg = e.message;
@@ -101,7 +100,7 @@ module.exports = (bot) => {
           accessHash: BigInt(state.data.lastAccessHash)
         });
         await acc.client.invoke(new Api.channels.DeleteChannel({ channel: inputChannel }));
-      } catch (e) {}
+      } catch {}
     }
 
     state.setResult('rejected');
@@ -138,8 +137,7 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
         await ctx.api.editMessageText(
           userId,
           statusMsgId,
-          `📡 *SCANNING IN PROGRESS*\n━━━━━━━━━━━━━━━━\n🔍 Checked: \`${checked}\`\n📝 Current: \`${username}\`\n📊 Queue: \`${wordlist.remaining()}\`\n━━━━━━━━━━━━━━━━`,
-          { parse_mode: 'Markdown' }
+          `📡 *SCANNING IN PROGRESS*\n━━━━━━━━━━━━━━━━\n🔍 Checked: \`${checked}\`\n📝 Current: \`${username}\`\n📊 Queue: \`${wordlist.remaining()}\`\n━━━━━━━━━━━━━━━━`
         );
       } catch {}
     }
@@ -167,7 +165,18 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
         broadcast: true,
         megagroup: false
       }));
-      if (controller.abort) break;
+      if (controller.abort) {
+        // jika sudah telanjur buat, hapus
+        const chan = (updates.chats || []).find(c => c.className === 'Channel' || c.title === username);
+        if (chan) {
+          try {
+            await acc.client.invoke(new Api.channels.DeleteChannel({
+              channel: new Api.InputChannel({ channelId: chan.id, accessHash: chan.accessHash })
+            }));
+          } catch {}
+        }
+        break;
+      }
 
       const chan = (updates.chats || []).find(c => c.className === 'Channel' || c.title === username);
       if (!chan) {
@@ -186,7 +195,10 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
           channel: inputChannel,
           username
         }));
-        if (controller.abort) break;
+        if (controller.abort) {
+          try { await acc.client.invoke(new Api.channels.DeleteChannel({ channel: inputChannel })); } catch {}
+          break;
+        }
 
         log(`Username set: @${username}`);
 
@@ -202,7 +214,7 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
           .text('❌ DROP', 'hunter:reject');
 
         await ctx.reply(
-          `💎 *GEM FOUND!* 💎\n━━━━━━━━━━━━━━━━\nUsername: *@${username}*\nAttempt: #${checked}\n━━━━━━━━━━━━━━━━\n\n_Tentukan nasib username ini:_`,
+          `💎 *GEM FOUND!* 💎\n━━━━━━━━━━━━━━━━\nUsername: *@${username}*\nAttempt: #${checked}\n━━━━━━━━━━━━━━━━\n\n_Tentukan nasib username ini._`,
           { reply_markup: kb, parse_mode: 'Markdown' }
         );
 
@@ -221,6 +233,7 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
           await ctx.reply(msg, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
           break;
         }
+        // Gagal set username: hapus channel supaya tidak jadi privat nganggur
         try {
           await acc.client.invoke(new Api.channels.DeleteChannel({ channel: inputChannel }));
         } catch {}
