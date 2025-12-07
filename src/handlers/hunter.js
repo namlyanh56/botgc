@@ -17,6 +17,11 @@ async function abortableSleep(controller, ms, step = 300) {
 }
 function log(...a) { if (DEBUG) console.log('[Hunter]', ...a); }
 
+// Validasi kandidat agar cocok aturan Telegram
+function isValidCandidate(u) {
+  return /^[a-z][a-z0-9_]{3,}$/i.test(u) && u.length >= 5 && u.length <= 32;
+}
+
 const activeHunts = new Map();
 const wordlists = new Map();
 function getWordlist(userId) {
@@ -126,7 +131,6 @@ module.exports = (bot) => {
     state.setResult('rejected');
     state.hunting = true;
 
-    // Mulai lagi loop baru
     const controller = { abort: false };
     activeHunts.set(ctx.from.id, controller);
 
@@ -151,6 +155,12 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
     checked++;
     state.incrementChecked();
 
+    // Skip jika tidak valid menurut aturan Telegram
+    if (!isValidCandidate(username)) {
+      log(`Skip invalid: ${username}`);
+      continue;
+    }
+
     log(`Checking: ${username} (${checked})`);
 
     if (checked % 10 === 0 && statusMsgId) {
@@ -166,38 +176,39 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
     if (controller.abort) break;
 
     try {
-      await acc.ensureConnected();
+      // Pastikan koneksi aktif
+      const ok = await acc.ensureConnected();
+      if (!ok) {
+        try { await acc.client.connect(); } catch (e) { log('connect fail:', e.message); }
+      }
       if (controller.abort) break;
 
-      // Cek ketersediaan saja
       const available = await acc.client.invoke(new Api.account.CheckUsername({ username }));
       if (controller.abort) break;
 
-      if (!available) {
-        await abortableSleep(controller, delayMs);
-        if (controller.abort) break;
-        continue;
+      if (available === true) {
+        log(`AVAILABLE: ${username}`);
+        state.setLastClaim(username, null, null);
+        state.hunting = false;
+
+        if (statusMsgId) {
+          try { await ctx.api.deleteMessage(userId, statusMsgId); } catch {}
+        }
+
+        const kb = new InlineKeyboard()
+          .text('✅ CLAIM', 'hunter:accept')
+          .text('❌ SKIP', 'hunter:reject');
+
+        await ctx.reply(
+          `💎 *USERNAME AVAILABLE!* 💎\n━━━━━━━━━━━━━━━━\nUsername: *@${username}*\nAttempt: #${checked}\n━━━━━━━━━━━━━━━━\n\nPilih aksi:`,
+          { reply_markup: kb, parse_mode: 'Markdown' }
+        );
+
+        activeHunts.delete(userId);
+        return;
+      } else {
+        log(`Taken: ${username}`);
       }
-
-      // Ditemukan available -> tawarkan CLAIM/SKIP, hentikan loop
-      state.setLastClaim(username, null, null);
-      state.hunting = false;
-
-      if (statusMsgId) {
-        try { await ctx.api.deleteMessage(userId, statusMsgId); } catch {}
-      }
-
-      const kb = new InlineKeyboard()
-        .text('✅ CLAIM', 'hunter:accept')
-        .text('❌ SKIP', 'hunter:reject');
-
-      await ctx.reply(
-        `💎 *USERNAME AVAILABLE!* 💎\n━━━━━━━━━━━━━━━━\nUsername: *@${username}*\nAttempt: #${checked}\n━━━━━━━━━━━━━━━━\n\nPilih aksi:`,
-        { reply_markup: kb, parse_mode: 'Markdown' }
-      );
-
-      activeHunts.delete(userId);
-      return;
 
     } catch (e) {
       if (e.message && e.message.includes('FLOOD_WAIT')) {
@@ -214,6 +225,7 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
         if (controller.abort) break;
         continue;
       }
+      log('CheckUsername error:', e.message || e);
     }
 
     if (controller.abort) break;
