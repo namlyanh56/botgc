@@ -17,28 +17,17 @@ async function abortableSleep(controller, ms, step = 300) {
 }
 function log(...a) { if (DEBUG) console.log('[Hunter]', ...a); }
 
+// Aktif hunt per user
 const activeHunts = new Map();
+// Wordlist per user
 const wordlists = new Map();
 function getWordlist(userId) {
   if (!wordlists.has(userId)) wordlists.set(userId, new WordlistManager());
   return wordlists.get(userId);
 }
 
-function isChannelLimitError(e) {
-  if (!e || !e.message) return null;
-  const msg = e.message;
-  if (msg.includes('FLOOD_WAIT_')) {
-    const m = msg.match(/FLOOD_WAIT_(\d+)/);
-    const seconds = m ? parseInt(m[1], 10) : 60;
-    return { type: 'flood', waitSec: seconds };
-  }
-  if (msg.includes('CHANNELS_TOO_MUCH')) {
-    return { type: 'too_many_channels', waitSec: null };
-  }
-  return null;
-}
-
 module.exports = (bot) => {
+  // Start Sniper
   bot.hears(MENU.huntUsername, async (ctx) => {
     const acc = getAcc(ctx.from.id);
     if (!acc?.authed) {
@@ -64,6 +53,7 @@ module.exports = (bot) => {
     await huntLoop(ctx, acc, state, wordlist, controller);
   });
 
+  // Stop Sniper
   bot.hears(MENU.stopHunt, async (ctx) => {
     const controller = activeHunts.get(ctx.from.id);
     if (controller) controller.abort = true;
@@ -75,42 +65,71 @@ module.exports = (bot) => {
     await ctx.reply('🛑 *Sniper Stopped.* Operasi dihentikan.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
   });
 
+  // CLAIM (baru buat channel + set username sekali)
   bot.callbackQuery('hunter:accept', async (ctx) => {
-    try { await ctx.answerCallbackQuery('✅ Disimpan!'); } catch {}
-    const state = new HunterState(ctx.from.id);
-    state.setResult('accepted');
-    state.hunting = false;
-    const controller = activeHunts.get(ctx.from.id);
-    if (controller) controller.abort = true;
-    activeHunts.delete(ctx.from.id);
-    try { await ctx.deleteMessage(); } catch {}
-    await ctx.reply(`🎉 *ASSET SECURED*\nUsername: @${state.data.lastUsername}\nStatus: _Saved in account_`, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
-  });
-
-  bot.callbackQuery('hunter:reject', async (ctx) => {
-    try { await ctx.answerCallbackQuery('❌ Menghapus...'); } catch {}
+    try { await ctx.answerCallbackQuery('✅ Memproses claim...'); } catch {}
     const state = new HunterState(ctx.from.id);
     const acc = getAcc(ctx.from.id);
+    const username = state.data.lastUsername;
 
-    if (acc?.authed && state.data.lastChannelId && state.data.lastAccessHash) {
-      try {
-        await acc.ensureConnected();
-        const inputChannel = new Api.InputChannel({
-          channelId: BigInt(state.data.lastChannelId),
-          accessHash: BigInt(state.data.lastAccessHash)
-        });
-        await acc.client.invoke(new Api.channels.DeleteChannel({ channel: inputChannel }));
-      } catch {}
+    if (!acc?.authed || !username) {
+      return ctx.reply('❌ Sesi tidak valid atau belum login user.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
     }
 
+    try {
+      await acc.ensureConnected();
+      // Buat channel publik dan set username
+      const updates = await acc.client.invoke(new Api.channels.CreateChannel({
+        title: username,
+        about: `Reserved: @${username}`,
+        broadcast: true,
+        megagroup: false
+      }));
+
+      const chan = (updates.chats || []).find(c => c.className === 'Channel' || c.title === username);
+      if (!chan) throw new Error('Channel tidak ditemukan setelah dibuat.');
+
+      const inputChannel = new Api.InputChannel({ channelId: chan.id, accessHash: chan.accessHash });
+
+      try {
+        await acc.client.invoke(new Api.channels.UpdateUsername({
+          channel: inputChannel,
+          username
+        }));
+      } catch (e) {
+        // Gagal set username, hapus channel
+        try { await acc.client.invoke(new Api.channels.DeleteChannel({ channel: inputChannel })); } catch {}
+        throw e;
+      }
+
+      state.setLastClaim(username, chan.id, chan.accessHash);
+      state.hunting = false;
+
+      try { await ctx.deleteMessage(); } catch {}
+      await ctx.reply(`🎉 *ASSET SECURED*\nUsername: @${username}\nStatus: _Saved in account_`, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+
+    } catch (e) {
+      await ctx.reply('❌ Claim gagal: ' + (e.message || e), { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    } finally {
+      const controller = activeHunts.get(ctx.from.id);
+      if (controller) controller.abort = true;
+      activeHunts.delete(ctx.from.id);
+    }
+  });
+
+  // SKIP (tidak buat channel)
+  bot.callbackQuery('hunter:reject', async (ctx) => {
+    try { await ctx.answerCallbackQuery('⏹️ Dilewati'); } catch {}
+    const state = new HunterState(ctx.from.id);
     state.setResult('rejected');
     state.hunting = false;
+
     const controller = activeHunts.get(ctx.from.id);
     if (controller) controller.abort = true;
     activeHunts.delete(ctx.from.id);
 
     try { await ctx.deleteMessage(); } catch {}
-    await ctx.reply(`🗑️ *ASSET DISCARDED*\nUsername @${state.data.lastUsername} dilepas dan channel dihapus.`, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    await ctx.reply(`🗑️ *ASSET DISCARDED*\nUsername @${state.data.lastUsername} dilepas (tanpa membuat channel).`, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
   });
 };
 
@@ -148,7 +167,7 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
       await acc.ensureConnected();
       if (controller.abort) break;
 
-      // 1) Cek ketersediaan
+      // 1) Cek ketersediaan saja (tanpa membuat channel)
       const available = await acc.client.invoke(new Api.account.CheckUsername({ username }));
       if (controller.abort) break;
 
@@ -158,86 +177,25 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
         continue;
       }
 
-      // 2) Buat channel
-      const updates = await acc.client.invoke(new Api.channels.CreateChannel({
-        title: username,
-        about: `Reserved: @${username}`,
-        broadcast: true,
-        megagroup: false
-      }));
-      if (controller.abort) {
-        // jika sudah telanjur buat, hapus
-        const chan = (updates.chats || []).find(c => c.className === 'Channel' || c.title === username);
-        if (chan) {
-          try {
-            await acc.client.invoke(new Api.channels.DeleteChannel({
-              channel: new Api.InputChannel({ channelId: chan.id, accessHash: chan.accessHash })
-            }));
-          } catch {}
-        }
-        break;
+      // Ditemukan available -> hentikan loop, tawarkan CLAIM/SKIP
+      state.setLastClaim(username, null, null);
+      state.hunting = false;
+
+      if (statusMsgId) {
+        try { await ctx.api.deleteMessage(userId, statusMsgId); } catch {}
       }
 
-      const chan = (updates.chats || []).find(c => c.className === 'Channel' || c.title === username);
-      if (!chan) {
-        await abortableSleep(controller, delayMs);
-        if (controller.abort) break;
-        continue;
-      }
+      const kb = new InlineKeyboard()
+        .text('✅ CLAIM', 'hunter:accept')
+        .text('❌ SKIP', 'hunter:reject');
 
-      const inputChannel = new Api.InputChannel({
-        channelId: chan.id,
-        accessHash: chan.accessHash
-      });
+      await ctx.reply(
+        `💎 *USERNAME AVAILABLE!* 💎\n━━━━━━━━━━━━━━━━\nUsername: *@${username}*\nAttempt: #${checked}\n━━━━━━━━━━━━━━━━\n\nPilih aksi:`,
+        { reply_markup: kb, parse_mode: 'Markdown' }
+      );
 
-      try {
-        await acc.client.invoke(new Api.channels.UpdateUsername({
-          channel: inputChannel,
-          username
-        }));
-        if (controller.abort) {
-          try { await acc.client.invoke(new Api.channels.DeleteChannel({ channel: inputChannel })); } catch {}
-          break;
-        }
-
-        log(`Username set: @${username}`);
-
-        state.setLastClaim(username, chan.id, chan.accessHash);
-        state.hunting = false;
-
-        if (statusMsgId) {
-          try { await ctx.api.deleteMessage(userId, statusMsgId); } catch {}
-        }
-
-        const kb = new InlineKeyboard()
-          .text('✅ KEEP', 'hunter:accept')
-          .text('❌ DROP', 'hunter:reject');
-
-        await ctx.reply(
-          `💎 *GEM FOUND!* 💎\n━━━━━━━━━━━━━━━━\nUsername: *@${username}*\nAttempt: #${checked}\n━━━━━━━━━━━━━━━━\n\n_Tentukan nasib username ini._`,
-          { reply_markup: kb, parse_mode: 'Markdown' }
-        );
-
-        activeHunts.delete(userId);
-        return;
-
-      } catch (e) {
-        const limit = isChannelLimitError(e);
-        if (limit) {
-          state.hunting = false;
-          controller.abort = true;
-          activeHunts.delete(userId);
-          const msg = limit.waitSec
-            ? `⚠️ *Rate Limit.* Tunggu ~${Math.ceil(limit.waitSec / 60)} menit.`
-            : '⚠️ *Channel Limit Reached.* Hapus beberapa channel publik.';
-          await ctx.reply(msg, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
-          break;
-        }
-        // Gagal set username: hapus channel supaya tidak jadi privat nganggur
-        try {
-          await acc.client.invoke(new Api.channels.DeleteChannel({ channel: inputChannel }));
-        } catch {}
-      }
+      activeHunts.delete(userId);
+      return;
 
     } catch (e) {
       if (e.message && e.message.includes('FLOOD_WAIT')) {
