@@ -11,14 +11,11 @@ function log(...a) { if (DEBUG) console.log('[Hunter]', ...a); }
 
 // Store aktif hunting loops per user
 const activeHunts = new Map();
-
 // Wordlist manager per user
 const wordlists = new Map();
 
 function getWordlist(userId) {
-  if (!wordlists.has(userId)) {
-    wordlists.set(userId, new WordlistManager());
-  }
+  if (!wordlists.has(userId)) wordlists.set(userId, new WordlistManager());
   return wordlists.get(userId);
 }
 
@@ -43,21 +40,17 @@ module.exports = (bot) => {
       { reply_markup: mainMenu(ctx) }
     );
 
-    // Simpan abort controller
     const controller = { abort: false };
     activeHunts.set(ctx.from.id, controller);
 
-    // Loop pencarian
     await huntLoop(ctx, acc, state, wordlist, controller);
   });
 
   // Tombol Stop Pencarian
   bot.hears(MENU.stopHunt, async (ctx) => {
     const controller = activeHunts.get(ctx.from.id);
-    if (controller) {
-      controller.abort = true;
-      activeHunts.delete(ctx.from.id);
-    }
+    if (controller) controller.abort = true;
+    activeHunts.delete(ctx.from.id);
 
     const state = new HunterState(ctx.from.id);
     state.hunting = false;
@@ -88,7 +81,7 @@ module.exports = (bot) => {
     const state = new HunterState(ctx.from.id);
     const acc = getAcc(ctx.from.id);
 
-    // Hapus channel
+    // Hapus channel jika ada
     if (acc?.authed && state.data.lastChannelId && state.data.lastAccessHash) {
       try {
         await acc.ensureConnected();
@@ -115,13 +108,9 @@ module.exports = (bot) => {
   });
 };
 
-/**
- * Main hunting loop
- */
 async function huntLoop(ctx, acc, state, wordlist, controller) {
   const userId = ctx.from.id;
   const delayMs = Math.max(DELAY_MS, 2000);
-
   let checked = 0;
   let statusMsgId = null;
 
@@ -137,7 +126,6 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
 
     log(`Checking: ${username} (${checked})`);
 
-    // Update status setiap 10 pengecekan
     if (checked % 10 === 0 && statusMsgId) {
       try {
         await ctx.api.editMessageText(
@@ -151,75 +139,72 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
     try {
       await acc.ensureConnected();
 
-      // Cek ketersediaan username
+      // 1) Cek ketersediaan tanpa membuat channel
       const available = await acc.client.invoke(new Api.account.CheckUsername({ username }));
+      if (!available) {
+        log(`Username taken: ${username}`);
+        if (controller.abort) break;
+        await sleep(delayMs);
+        continue;
+      }
 
-      if (available) {
-        log(`Username available: ${username}`);
+      // 2) Hanya buat satu channel publik setelah dipastikan available
+      const updates = await acc.client.invoke(new Api.channels.CreateChannel({
+        title: username,
+        about: `Channel for @${username}`,
+        broadcast: true,
+        megagroup: false
+      }));
 
-        // Buat broadcast channel
-        const updates = await acc.client.invoke(new Api.channels.CreateChannel({
-          title: username,
-          about: `Channel for @${username}`,
-          broadcast: true,
-          megagroup: false
+      const chan = (updates.chats || []).find(c => c.className === 'Channel' || c.title === username);
+      if (!chan) {
+        log('Channel not found after creation');
+        await sleep(delayMs);
+        continue;
+      }
+
+      const inputChannel = new Api.InputChannel({
+        channelId: chan.id,
+        accessHash: chan.accessHash
+      });
+
+      try {
+        await acc.client.invoke(new Api.channels.UpdateUsername({
+          channel: inputChannel,
+          username
         }));
 
-        const chan = (updates.chats || []).find(c => c.className === 'Channel' || c.title === username);
-        if (!chan) {
-          log('Channel not found after creation');
-          await sleep(delayMs);
-          continue;
+        log(`Username set: @${username}`);
+
+        state.setLastClaim(username, chan.id, chan.accessHash);
+        state.hunting = false;
+
+        if (statusMsgId) {
+          try { await ctx.api.deleteMessage(userId, statusMsgId); } catch {}
         }
 
-        const inputChannel = new Api.InputChannel({
-          channelId: chan.id,
-          accessHash: chan.accessHash
-        });
+        const kb = new InlineKeyboard()
+          .text('✅ Terima', 'hunter:accept')
+          .text('❌ Tolak', 'hunter:reject');
 
-        // Set username
+        await ctx.reply(
+          `🎉 Berhasil klaim @${username}!\n\n📊 Total dicek: ${checked}\n\nPilih aksi:`,
+          { reply_markup: kb }
+        );
+
+        activeHunts.delete(userId);
+        return;
+
+      } catch (e) {
+        log('UpdateUsername failed (likely sudah diambil race):', e.message);
         try {
-          await acc.client.invoke(new Api.channels.UpdateUsername({
-            channel: inputChannel,
-            username
-          }));
-
-          log(`Username set: @${username}`);
-
-          state.setLastClaim(username, chan.id, chan.accessHash);
-          state.hunting = false;
-
-          if (statusMsgId) {
-            try { await ctx.api.deleteMessage(userId, statusMsgId); } catch {}
-          }
-
-          const kb = new InlineKeyboard()
-            .text('✅ Terima', 'hunter:accept')
-            .text('❌ Tolak', 'hunter:reject');
-
-          await ctx.reply(
-            `🎉 Berhasil klaim @${username}!\n\n📊 Total dicek: ${checked}\n\nPilih aksi:`,
-            { reply_markup: kb }
-          );
-
-          activeHunts.delete(userId);
-          return;
-
-        } catch (e) {
-          log('UpdateUsername failed:', e.message);
-          try {
-            await acc.client.invoke(new Api.channels.DeleteChannel({ channel: inputChannel }));
-          } catch {}
-        }
-
-      } else {
-        log(`Username taken: ${username}`);
+          await acc.client.invoke(new Api.channels.DeleteChannel({ channel: inputChannel }));
+        } catch {}
       }
 
     } catch (e) {
       log('Check error:', e.message);
 
-      // Handle FLOOD_WAIT
       if (e.message && e.message.includes('FLOOD_WAIT')) {
         const waitMatch = e.message.match(/FLOOD_WAIT_(\d+)/);
         const waitTime = waitMatch ? parseInt(waitMatch[1], 10) : 30;
@@ -235,6 +220,7 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
       }
     }
 
+    if (controller.abort) break;
     await sleep(delayMs);
   }
 
