@@ -1,9 +1,9 @@
 const { BOT_TOKEN, MESSAGE_EFFECT_ID, HELP_EFFECT_ID, API_ID, API_HASH } = require('./config/setting');
 const { Bot, session } = require('grammy');
 const { mainMenu, MENU } = require('./utils/menu');
-const { loadSessions } = require('./utils/sessionStore'); // <— baru
-const { getUser } = require('./utils/helper'); // <— baru
-const Account = require('./model/Account'); // <— baru
+const { loadSessions } = require('./utils/sessionStore');
+const { getUser, getAcc } = require('./utils/helper');
+const Account = require('./model/Account');
 
 const auth = require('./handlers/auth');
 const groups = require('./handlers/groups');
@@ -12,7 +12,6 @@ const hunter = require('./handlers/hunter');
 const bot = new Bot(BOT_TOKEN);
 bot.use(session({ initial: () => ({}) }));
 
-// Bootstrap: load saved MTProto sessions so menu menampilkan tombol hunter setelah restart
 (function restoreSessions() {
   const saved = loadSessions();
   Object.keys(saved || {}).forEach((userId) => {
@@ -31,6 +30,19 @@ bot.use(session({ initial: () => ({}) }));
 
 bot.command('start', async (ctx) => {
   await ctx.reply('👋 Selamat datang! Silakan pilih menu:', { reply_markup: mainMenu(ctx) });
+});
+
+// Status untuk debug
+bot.command('status', async (ctx) => {
+  const u = getUser(ctx.from.id);
+  const acc = getAcc(ctx.from.id);
+  const accountsCount = u.accounts.size;
+  const current = acc ? { id: acc.id, authed: !!acc.authed } : null;
+
+  await ctx.reply(
+    `Status:\n• Akun tersimpan: ${accountsCount}\n• Akun aktif: ${current ? current.id : '(none)'}\n• Authed: ${current ? current.authed : false}`,
+    { reply_markup: mainMenu(ctx) }
+  );
 });
 
 bot.hears(MENU.help, async (ctx) => {
