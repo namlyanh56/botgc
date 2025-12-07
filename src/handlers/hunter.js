@@ -17,9 +17,7 @@ async function abortableSleep(controller, ms, step = 300) {
 }
 function log(...a) { if (DEBUG) console.log('[Hunter]', ...a); }
 
-// Aktif hunt per user
 const activeHunts = new Map();
-// Wordlist per user
 const wordlists = new Map();
 function getWordlist(userId) {
   if (!wordlists.has(userId)) wordlists.set(userId, new WordlistManager());
@@ -43,7 +41,7 @@ module.exports = (bot) => {
     const wordlist = getWordlist(ctx.from.id);
 
     await ctx.reply(
-      `📡 *USERNAME SNIPER INITIATED*\n\n🎯 Target: \`${wordlist.remaining()} words\`\n⏱️ Estimasi: ${wordlist.estimateTotal().toLocaleString()}+\n\n_Scanning network..._`,
+      `📡 *USERNAME SNIPER INITIATED*\n\n🎯 Target: \`${wordlist.remaining()} kata\`\n⏱️ Estimasi: ${wordlist.estimateTotal().toLocaleString()}+\n\n_Scanning network..._`,
       { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' }
     );
 
@@ -65,9 +63,9 @@ module.exports = (bot) => {
     await ctx.reply('🛑 *Sniper Stopped.* Operasi dihentikan.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
   });
 
-  // CLAIM (baru buat channel + set username sekali)
+  // CLAIM: baru buat channel + set username sekali
   bot.callbackQuery('hunter:accept', async (ctx) => {
-    try { await ctx.answerCallbackQuery('✅ Memproses claim...'); } catch {}
+    try { await ctx.answerCallbackQuery('✅ Claim...'); } catch {}
     const state = new HunterState(ctx.from.id);
     const acc = getAcc(ctx.from.id);
     const username = state.data.lastUsername;
@@ -78,7 +76,7 @@ module.exports = (bot) => {
 
     try {
       await acc.ensureConnected();
-      // Buat channel publik dan set username
+
       const updates = await acc.client.invoke(new Api.channels.CreateChannel({
         title: username,
         about: `Reserved: @${username}`,
@@ -97,7 +95,6 @@ module.exports = (bot) => {
           username
         }));
       } catch (e) {
-        // Gagal set username, hapus channel
         try { await acc.client.invoke(new Api.channels.DeleteChannel({ channel: inputChannel })); } catch {}
         throw e;
       }
@@ -117,19 +114,24 @@ module.exports = (bot) => {
     }
   });
 
-  // SKIP (tidak buat channel)
+  // SKIP: langsung lanjut scanning (tanpa buat channel)
   bot.callbackQuery('hunter:reject', async (ctx) => {
-    try { await ctx.answerCallbackQuery('⏹️ Dilewati'); } catch {}
+    try { await ctx.answerCallbackQuery('⏭️ Lanjut cari berikutnya'); } catch {}
     const state = new HunterState(ctx.from.id);
-    state.setResult('rejected');
-    state.hunting = false;
+    const acc = getAcc(ctx.from.id);
+    if (!acc?.authed) {
+      return ctx.reply('❌ Belum login user.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    }
 
-    const controller = activeHunts.get(ctx.from.id);
-    if (controller) controller.abort = true;
-    activeHunts.delete(ctx.from.id);
+    state.setResult('rejected');
+    state.hunting = true;
+
+    // Mulai lagi loop baru
+    const controller = { abort: false };
+    activeHunts.set(ctx.from.id, controller);
 
     try { await ctx.deleteMessage(); } catch {}
-    await ctx.reply(`🗑️ *ASSET DISCARDED*\nUsername @${state.data.lastUsername} dilepas (tanpa membuat channel).`, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    await huntLoop(ctx, acc, state, getWordlist(ctx.from.id), controller);
   });
 };
 
@@ -167,7 +169,7 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
       await acc.ensureConnected();
       if (controller.abort) break;
 
-      // 1) Cek ketersediaan saja (tanpa membuat channel)
+      // Cek ketersediaan saja
       const available = await acc.client.invoke(new Api.account.CheckUsername({ username }));
       if (controller.abort) break;
 
@@ -177,7 +179,7 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
         continue;
       }
 
-      // Ditemukan available -> hentikan loop, tawarkan CLAIM/SKIP
+      // Ditemukan available -> tawarkan CLAIM/SKIP, hentikan loop
       state.setLastClaim(username, null, null);
       state.hunting = false;
 
