@@ -29,45 +29,61 @@ bot.use(session({ initial: () => ({}) }));
 })();
 
 bot.command('start', async (ctx) => {
-  await ctx.reply('👋 Selamat datang! Silakan pilih menu:', { reply_markup: mainMenu(ctx) });
+  const txt = 
+`*👋 WELCOME, COMMANDER.*
+
+Sistem siap digunakan. Silakan hubungkan akun Telegram Anda untuk memulai manajemen Grup atau Username Sniper.
+
+_Pilih menu di bawah untuk navigasi._`;
+  
+  await ctx.reply(txt, { 
+    reply_markup: mainMenu(ctx), 
+    parse_mode: 'Markdown' 
+  });
 });
 
-// Status untuk debug
+// Status dengan gaya terminal
 bot.command('status', async (ctx) => {
   const u = getUser(ctx.from.id);
   const acc = getAcc(ctx.from.id);
   const accountsCount = u.accounts.size;
   const current = acc ? { id: acc.id, authed: !!acc.authed } : null;
 
-  await ctx.reply(
-    `Status:\n• Akun tersimpan: ${accountsCount}\n• Akun aktif: ${current ? current.id : '(none)'}\n• Authed: ${current ? current.authed : false}`,
-    { reply_markup: mainMenu(ctx) }
-  );
+  const statusIcon = current && current.authed ? '🟢 ONLINE' : '🔴 OFFLINE';
+
+  const txt = 
+`💻 *SYSTEM STATUS*
+━━━━━━━━━━━━━━━━━━
+👤 *User:* \`${ctx.from.first_name}\`
+📂 *Saved Accounts:* \`${accountsCount}\`
+🔑 *Active Session:* \`${current ? current.id : 'N/A'}\`
+📡 *Connection:* ${statusIcon}
+━━━━━━━━━━━━━━━━━━`;
+
+  await ctx.reply(txt, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
 });
 
 bot.hears(MENU.help, async (ctx) => {
   const text =
-`🔥 Bot Pembuat Grup & Username Hunter 🔥
+`🤖 *BOT MANUAL INTERFACE*
+━━━━━━━━━━━━━━━━━━━━
 
-Fitur Grup:
-• Login user (OTP/2FA) via bot
-• Buat banyak supergroup berurutan
-• Atur history agar terlihat
-• Kirim link undangan setiap grup
+🔹 *GROUP MANAGER*
+• *Batch Create*: Buat banyak grup sekaligus dari daftar nama.
+• *Seq Create*: Buat grup berurutan (Grup 1, Grup 2, dst).
+• *Fitur*: Auto set history visible & generate invite link.
 
-🔎 Username Hunter:
-• Cari username channel yang tersedia
-• Wordlist otomatis 100,000+ kandidat
-• Bahasa: English, Indonesia, Jawa
-• Kata NFT/Crypto bernilai tinggi
-• Prefix A-Z otomatis
-• Filter: huruf a-z, panjang 5-8
-• Konfirmasi Terima/Tolak hasil
+🔹 *USERNAME SNIPER*
+• *Start Sniper*: Mencari username cantik/langka secara otomatis.
+• *Database*: 100k+ kata dasar (Crypto, NFT, Indo, Jawa).
+• *Action*: Bot akan menahan username di channel publik.
+
+⚠️ *Note:* _Gunakan dengan bijak untuk menghindari limit Telegram._
 
 Owner: @stuaart`;
 
   const effect = HELP_EFFECT_ID || MESSAGE_EFFECT_ID;
-  const opts = { reply_markup: mainMenu(ctx) };
+  const opts = { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' };
   if (effect) opts.message_effect_id = effect;
   await ctx.reply(text, opts);
 });
@@ -80,7 +96,10 @@ bot.callbackQuery('action:cancel', async (ctx) => {
   try { await ctx.answerCallbackQuery(); } catch {}
   try { ctx.session = null; } catch {}
   try { await ctx.deleteMessage(); } catch {}
-  await ctx.reply('↩️ Kembali ke menu awal.', { reply_markup: mainMenu(ctx) });
+  await ctx.reply('🔙 *Operasi dibatalkan.* Kembali ke menu utama.', { 
+    reply_markup: mainMenu(ctx),
+    parse_mode: 'Markdown' 
+  });
 });
 
 bot.catch((e) => console.error('Bot error:', e));
