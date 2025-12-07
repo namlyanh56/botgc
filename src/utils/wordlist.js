@@ -1,53 +1,6 @@
-// Wordlist Kurasi v5 – Seimbang EN/ID/Jawa/NFT, kombinasi ringkas & mudah diingat, panjang 5–8 huruf
+// Wordlist Kurasi v6 – Seimbang EN/ID/Jawa/NFT, tanpa campur lintas bahasa,
+// kombinasi hanya dalam bucket, panjang 5–8 huruf, hemat memori.
 
-const ALPHABET = 'abcdefghijklmnopqrstuvwxyz'.split('');
-
-// Prefix/suffix pendek (dipilih agar hasil tetap wajar)
-const PREFIXES = [
-  'go','my','hi','ok','up','in','ex','re','de','pro','neo','max','new','best','quick','fast'
-];
-
-const SUFFIXES = [
-  'id','co','io','me','us','go','up','on','to','ly',
-  'hub','lab','net','dev','app','box','now','pro','max','dao','nft'
-];
-
-// Short words untuk kombinasi
-const SHORTS = [
-  'go','up','in','on','to','do','me','we','ai',
-  'pro','max','neo','web','app','dev','bot','dao','nft',
-  'fast','cool','soft','code','data','byte','link','node','sync',
-  'meta','core','labs','swap','mint','drop','pool','grid','wave',
-  'moon','star','sky','sun','wind','fire'
-];
-
-// Seed kurasi (jumlah relatif seimbang)
-const SEEDS_EN = [
-  'alpha','prime','elite','nexus','apex','crown','realm','guard','ranger','scout',
-  'swift','rapid','spark','pulse','storm','blaze','flare','logic','pixel','quant',
-  'chain','block','hash','miner','ledger','wallet','vault','fusion','oracle','zeta'
-];
-
-const SEEDS_ID = [
-  'keren','mantap','hebat','juara','unggul','sakti','cepat','sigap','lancar','terang',
-  'cerah','kilau','cahya','bintang','remix','serasi','amanah','mulia','utama','agung',
-  'pintar','ahli','tajir','cuan','gacor','viral','trendi','gaul','asik','seru'
-];
-
-const SEEDS_JAWA = [
-  'apik','becik','pinter','sregep','wicak','prawi','santosa','luhur','mulya','linuwih',
-  'sekti','wijaya','gilang','rembu','lintang','kartika','teja','cahya','ratu','raja',
-  'adipati','senopati','panglima','mataram','majapahit','brawija','jayeng'
-];
-
-const SEEDS_NFT = [
-  'crypto','bitcoin','ether','solana','matic','avax','defi','dapp','stake','yield',
-  'token','wallet','ledger','chain','block','hash','whale','degen','alpha','airdrop',
-  'mint','burn','bridge','swap','punk','ape','pepe','doge','shib',
-  'meta','verse','world','realm','dao','nft','pfp','floor','sweep'
-];
-
-// Helper
 function isValidUsername(str) {
   return /^[a-z]{5,8}$/.test(str);
 }
@@ -61,9 +14,72 @@ function shuffle(arr) {
   return a;
 }
 
+// Bucket: seed, short, prefix, suffix per bahasa/kategori
+const BUCKETS = {
+  EN: {
+    seed: [
+      // core tech/brand-ish
+      'alpha','prime','elite','nexus','apex','crown','realm','guard','ranger','scout',
+      'swift','rapid','spark','pulse','storm','blaze','flare','logic','pixel','quant',
+      'chain','block','hash','miner','ledger','wallet','vault','fusion','oracle','vector',
+      'cipher','matrix','signal','stream','gamma','delta','omega','sigma','theta','kappa',
+      'crypto','cyber','neural','cluster','server','client','router','switch','cloud','render',
+      // short but clear
+      'smart','hyper','vivid','solid','smooth','bright','shiny','glossy','grain','lumen',
+      'rocket','boost','launch','pilot','flyer','drone','hover','glider','flare','ember'
+    ],
+    short: [
+      'pro','max','neo','core','meta','grid','node','sync','data','code','byte','link',
+      'flow','flux','aero','nano','micro','mega','ultra','hyper','quick','rapid'
+    ],
+    prefix: ['pro','neo','meta','ultra','hyper','astro','cyber','quant','smart'],
+    suffix: ['lab','labs','tech','soft','dev','app','core','net','hub','io','ai']
+  },
+  ID: {
+    seed: [
+      'keren','mantap','hebat','juara','unggul','sakti','cepat','sigap','lancar','terang',
+      'cerah','kilau','cahya','bintang','remix','serasi','amanah','mulia','utama','agung',
+      'pintar','ahli','tajir','cuan','gacor','viral','trendi','gaul','asik','seru',
+      'santuy','ramah','pasti','tepat','aman','damai','maju','tumbuh','subur','segar'
+    ],
+    short: [
+      'pro','maks','baru','cepat','aman','asik','seru','gaul','cuan','tajir','gacor',
+      'hepi','kaya','sabar','solid','tekno','digital','viral','trendi'
+    ],
+    prefix: ['pro','mega','super','pasti','tepat','hepi','aman','ceria'],
+    suffix: ['bang','indo','id','kita','ceria','asik','aman']
+  },
+  JW: {
+    seed: [
+      'apik','becik','pinter','sregep','wicak','prawi','santosa','luhur','mulya','linuwih',
+      'sekti','wijaya','gilang','lintang','kartika','teja','cahya','ratu','raja',
+      'adipati','senopati','panglima','mataram','majapahit','brawija','jayeng','wira','utama'
+    ],
+    short: [
+      'apik','becik','pinter','sugih','podo','rukun','tulus','adi','wira','jaya'
+    ],
+    prefix: ['pra','adi','utama','sura','wira'],
+    suffix: ['jati','maya','jaya','raya','wani','adi','tama']
+  },
+  NFT: {
+    seed: [
+      'crypto','bitcoin','ether','solana','matic','avax','defi','dapp','stake','yield',
+      'token','wallet','ledger','chain','block','satoshi','whale','degen','alpha',
+      'airdrop','mint','burn','bridge','swap','punk','ape','pepe','doge','shib',
+      'meta','verse','world','realm','dao','nft','pfp','floor','sweep','vault','ledger'
+    ],
+    short: [
+      'meta','core','labs','swap','mint','drop','pool','grid','dao','nft',
+      'defi','air','orb','zk','roll','loop','node','hash','coin','stake'
+    ],
+    prefix: ['meta','neo','ultra','super','cyber','astro','degen','whale','ape'],
+    suffix: ['dao','nft','dex','defi','swap','pad','hub','lab','labs','fi','x']
+  }
+};
+
 class WordlistManager {
   constructor() {
-    this.buckets = { EN: SEEDS_EN, ID: SEEDS_ID, JW: SEEDS_JAWA, NFT: SEEDS_NFT };
+    this.buckets = BUCKETS;
     this.candidates = [];
     this.index = 0;
     this.usedSet = new Set();
@@ -74,50 +90,53 @@ class WordlistManager {
   refresh() {
     this.generation++;
     const newSet = new Set();
-    const buckets = ['EN','ID','JW','NFT'];
 
-    // 1) Direct seeds (seimbang per bucket)
-    for (const b of buckets) {
-      for (const seed of this.buckets[b]) {
+    for (const [bucketName, cfg] of Object.entries(this.buckets)) {
+      const seeds = cfg.seed || [];
+      const shorts = cfg.short || [];
+      const prefixes = cfg.prefix || [];
+      const suffixes = cfg.suffix || [];
+
+      // 1) Direct seeds
+      for (const seed of seeds) {
         const w = seed.toLowerCase();
         if (isValidUsername(w) && !this.usedSet.has(w)) newSet.add(w);
       }
-    }
 
-    // 2) Alphabet prefix/suffix (dibatasi a–j agar wajar)
-    const alphaLimited = ALPHABET.slice(0, 10);
-    for (const b of buckets) {
-      for (const seed of this.buckets[b]) {
-        for (const letter of alphaLimited) {
-          const front = (letter + seed).toLowerCase();
-          const back = (seed + letter).toLowerCase();
-          if (isValidUsername(front) && !this.usedSet.has(front)) newSet.add(front);
-          if (isValidUsername(back) && !this.usedSet.has(back)) newSet.add(back);
+      // 2) prefix + seed
+      for (const pre of prefixes) {
+        for (const seed of seeds) {
+          const w = (pre + seed).toLowerCase();
+          if (isValidUsername(w) && !this.usedSet.has(w)) newSet.add(w);
         }
       }
-    }
 
-    // 3) Prefix/suffix kata pendek
-    for (const b of buckets) {
-      for (const seed of this.buckets[b]) {
-        for (const pre of PREFIXES) {
-          const combined = (pre + seed).toLowerCase();
-          if (isValidUsername(combined) && !this.usedSet.has(combined)) newSet.add(combined);
-        }
-        for (const suf of SUFFIXES) {
-          const combined = (seed + suf).toLowerCase();
-          if (isValidUsername(combined) && !this.usedSet.has(combined)) newSet.add(combined);
+      // 3) seed + suffix
+      for (const seed of seeds) {
+        for (const suf of suffixes) {
+          const w = (seed + suf).toLowerCase();
+          if (isValidUsername(w) && !this.usedSet.has(w)) newSet.add(w);
         }
       }
-    }
 
-    // 4) Kombinasi short+short (dibatasi, setelah shuffle)
-    const shorts = shuffle(SHORTS).slice(0, 40);
-    for (const w1 of shorts) {
-      for (const w2 of shorts) {
-        if (w1 === w2) continue;
-        const combined = (w1 + w2).toLowerCase();
-        if (isValidUsername(combined) && !this.usedSet.has(combined)) newSet.add(combined);
+      // 4) short + seed dan seed + short (dalam bucket yang sama)
+      for (const seed of seeds) {
+        for (const s of shorts) {
+          const w1 = (s + seed).toLowerCase();
+          const w2 = (seed + s).toLowerCase();
+          if (isValidUsername(w1) && !this.usedSet.has(w1)) newSet.add(w1);
+          if (isValidUsername(w2) && !this.usedSet.has(w2)) newSet.add(w2);
+        }
+      }
+
+      // 5) Kombinasi short + short dalam bucket yang sama (acak & dibatasi)
+      const shuffledShort = shuffle(shorts).slice(0, 20); // batasi supaya wajar
+      for (const a of shuffledShort) {
+        for (const b of shuffledShort) {
+          if (a === b) continue;
+          const w = (a + b).toLowerCase();
+          if (isValidUsername(w) && !this.usedSet.has(w)) newSet.add(w);
+        }
       }
     }
 
@@ -138,7 +157,6 @@ class WordlistManager {
   }
 
   estimateTotal() {
-    // estimasi sederhana
     return this.candidates.length + this.usedSet.size;
   }
 
