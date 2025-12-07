@@ -2,42 +2,41 @@ const { Keyboard, InlineKeyboard } = require('grammy');
 const { getAcc } = require('./helper');
 
 const MENU = {
-  login: '🔑 Login User 🔑',
-  logout: '🚪 Logout 🚪',
-  createFromList: '📝 Buat Grup dari Daftar 📝',
-  createSequential: '🚀 Buat Grup Berurutan 🚀',
-  lastResult: '📋 Hasil Terakhir 📋',
-  help: '❓ Bantuan ❓',
+  login: '🔐 Hubungkan Akun',
+  logout: '🔓 Putuskan Sambungan',
+  createFromList: '📝 Batch Create',
+  createSequential: '🔢 Seq Create',
+  lastResult: '📂 History Log',
+  help: '💡 Panduan',
   // Username Hunter
-  huntUsername: '🔎 Cari Username 🔎',
-  stopHunt: '⏹️ Stop Pencarian ⏹️'
+  huntUsername: '💎 Start Sniper',
+  stopHunt: '🛑 Stop Sniper'
 };
 
-// Tampilkan tombol: hunter SELALU terlihat untuk memudahkan debug.
-// Handler tetap mengharuskan login sebelum mulai hunting.
+// Tampilkan tombol dengan layout yang lebih rapi
 function mainMenu(ctx) {
   const acc = ctx ? getAcc(ctx.from.id) : null;
   const loggedIn = !!(acc && acc.authed);
 
   const kb = new Keyboard();
 
-  kb
-    .text(MENU.createFromList).text(MENU.createSequential).row()
-    .text(MENU.huntUsername).text(MENU.stopHunt).row()
-    .text(MENU.lastResult).text(MENU.help).row();
-
   if (loggedIn) {
-    kb.text(MENU.logout).row();
+    // Menu Utama saat Login
+    kb.text(MENU.createFromList).text(MENU.createSequential).row();
+    kb.text(MENU.huntUsername).text(MENU.stopHunt).row();
+    kb.text(MENU.lastResult).text(MENU.help).text(MENU.logout);
   } else {
+    // Menu saat Belum Login
     kb.text(MENU.login).row();
+    kb.text(MENU.help);
   }
 
   return kb.resized();
 }
 
-// Inline tombol BATAL untuk kembali ke menu awal
+// Inline tombol BATAL dengan gaya minimalis
 function inlineCancelKb() {
-  return new InlineKeyboard().text('❌ Batal', 'action:cancel');
+  return new InlineKeyboard().text('⛔ Batalkan Operasi', 'action:cancel');
 }
 
 module.exports = { MENU, mainMenu, inlineCancelKb };
