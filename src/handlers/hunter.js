@@ -7,6 +7,15 @@ const HunterState = require('../model/HunterState');
 const { DELAY_MS, DEBUG } = require('../config/setting');
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+// Sleep yang bisa di-interrupt oleh abort flag
+async function abortableSleep(controller, ms, step = 300) {
+  let remain = ms;
+  while (!controller.abort && remain > 0) {
+    const chunk = Math.min(step, remain);
+    await sleep(chunk);
+    remain -= chunk;
+  }
+}
 function log(...a) { if (DEBUG) console.log('[Hunter]', ...a); }
 
 // Store aktif hunting loops per user
@@ -136,15 +145,21 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
       } catch {}
     }
 
+    // Cek abort seawal mungkin
+    if (controller.abort) break;
+
     try {
       await acc.ensureConnected();
+      if (controller.abort) break;
 
       // 1) Cek ketersediaan tanpa membuat channel
       const available = await acc.client.invoke(new Api.account.CheckUsername({ username }));
+      if (controller.abort) break;
+
       if (!available) {
         log(`Username taken: ${username}`);
+        await abortableSleep(controller, delayMs);
         if (controller.abort) break;
-        await sleep(delayMs);
         continue;
       }
 
@@ -155,11 +170,13 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
         broadcast: true,
         megagroup: false
       }));
+      if (controller.abort) break;
 
       const chan = (updates.chats || []).find(c => c.className === 'Channel' || c.title === username);
       if (!chan) {
         log('Channel not found after creation');
-        await sleep(delayMs);
+        await abortableSleep(controller, delayMs);
+        if (controller.abort) break;
         continue;
       }
 
@@ -173,6 +190,7 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
           channel: inputChannel,
           username
         }));
+        if (controller.abort) break;
 
         log(`Username set: @${username}`);
 
@@ -215,13 +233,15 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
           } catch {}
         }
 
-        await sleep(waitTime * 1000);
+        await abortableSleep(controller, waitTime * 1000);
+        if (controller.abort) break;
         continue;
       }
     }
 
     if (controller.abort) break;
-    await sleep(delayMs);
+    await abortableSleep(controller, delayMs);
+    if (controller.abort) break;
   }
 
   if (statusMsgId) {
