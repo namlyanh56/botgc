@@ -52,7 +52,8 @@ class Account {
 
     const show = async (text, opts = {}) => {
       try {
-        const m = await ctx.reply(text, opts);
+        const finalOpts = { ...opts, parse_mode: 'Markdown' };
+        const m = await ctx.reply(text, finalOpts);
         this.loadingMsgId = m.message_id;
       } catch {}
     };
@@ -64,15 +65,15 @@ class Account {
       }
     };
 
-    await show('⏳ Memulai login...');
+    await show('🔄 *Establishing Secure Connection...*');
 
     try {
       await this.client.start({
         phoneNumber: async () => phone,
         phoneCode: async () => {
           await clearLoading();
-          const kb = { reply_markup: { inline_keyboard: [[{ text: '❌ Batal', callback_data: 'action:cancel' }]] } };
-          await show('📱 Kirim kode OTP (boleh dipisah spasi), contoh: 1 2 3 4 5', kb);
+          const kb = { reply_markup: { inline_keyboard: [[{ text: '⛔ Cancel', callback_data: 'action:cancel' }]] } };
+          await show('📨 *OTP SENT*\n\nMasukkan kode verifikasi Telegram Anda.\n_Contoh: 1 2 3 4 5 (Gunakan spasi)_', kb);
           const code = await new Promise(resolve => {
             this.pendingCode = (c) => resolve(String(c).replace(/\D+/g, ''));
           });
@@ -80,8 +81,8 @@ class Account {
         },
         password: async () => {
           await clearLoading();
-          const kb = { reply_markup: { inline_keyboard: [[{ text: '❌ Batal', callback_data: 'action:cancel' }]] } };
-          await show('🔐 Akun Anda pakai 2FA. Kirim password sekarang:', kb);
+          const kb = { reply_markup: { inline_keyboard: [[{ text: '⛔ Cancel', callback_data: 'action:cancel' }]] } };
+          await show('🔐 *2FA REQUIRED*\n\nAkun dilindungi password Cloud Password. Silakan masukkan:', kb);
           const pwd = await new Promise(resolve => {
             this.pendingPass = (p) => resolve(String(p).trim());
           });
@@ -95,28 +96,27 @@ class Account {
       saveSession(this.ownerId, this.id, this.sess);
       await clearLoading();
 
-      const opts = {};
+      const opts = { parse_mode: 'Markdown' };
       if (MESSAGE_EFFECT_ID) opts.message_effect_id = MESSAGE_EFFECT_ID;
       if (typeof getMainMenu === 'function') {
         opts.reply_markup = getMainMenu(ctx);
       }
 
-      await ctx.reply('✅ Login berhasil! Silakan pilih menu di bawah:', opts);
+      await ctx.reply('✅ *CONNECTION SUCCESSFUL*\nSelamat datang, identitas terverifikasi.', opts);
       return true;
 
     } catch (e) {
       await clearLoading();
 
-      // Izinkan satu kali retry OTP jika salah
       if (e.message && e.message.includes('PHONE_CODE_INVALID') && otpRetry < 1) {
-        await ctx.reply('⚠️ Kode OTP salah. Coba lagi, kirim OTP yang benar.');
+        await ctx.reply('⚠️ *OTP Salah.* Silakan coba masukkan kode yang benar sekali lagi.', { parse_mode: 'Markdown' });
         this.pendingCode = null;
         this.pendingPass = null;
         try { ctx.session = { act: 'login_waiting', id: this.id }; } catch {}
         return this.login(ctx, apiId, apiHash, phone, getMainMenu, otpRetry + 1);
       }
 
-      await ctx.reply('❌ Login gagal: ' + (e.message || String(e)));
+      await ctx.reply('❌ *Login Failed:* ' + (e.message || String(e)), { parse_mode: 'Markdown' });
       return false;
 
     } finally {
@@ -133,7 +133,7 @@ class Account {
     if (this.pendingCode && /^\d{3,8}$/.test(otpDigits)) {
       const fn = this.pendingCode;
       this.pendingCode = null;
-      try { ctx.reply('⏳ Memverifikasi kode...').catch(() => {}); } catch {}
+      try { ctx.reply('⏳ *Verifying OTP...*', { parse_mode: 'Markdown' }).catch(() => {}); } catch {}
       try { fn(otpDigits); } catch {}
       return true;
     }
@@ -141,7 +141,7 @@ class Account {
     if (this.pendingPass) {
       const fn = this.pendingPass;
       this.pendingPass = null;
-      try { ctx.reply('⏳ Memverifikasi password...').catch(() => {}); } catch {}
+      try { ctx.reply('⏳ *Verifying Password...*', { parse_mode: 'Markdown' }).catch(() => {}); } catch {}
       try { fn(raw); } catch {}
       return true;
     }
