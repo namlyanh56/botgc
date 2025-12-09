@@ -6,7 +6,7 @@ const STATE_FILE = path.join(__dirname, '../../data/hunter-state.json');
 // Pastikan folder data ada
 function ensureDir() {
   const dir = path.dirname(STATE_FILE);
-  if (!fs. existsSync(dir)) {
+  if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }
@@ -43,7 +43,10 @@ class HunterState {
         lastAccessHash: null,
         lastResult: null, // 'accepted' | 'rejected' | null
         checked: 0,
-        found: 0
+        found: 0,
+        manualWordlist: [],
+        autoTakeTargets: [],
+        autoTakeActive: false
       };
     }
   }
@@ -58,25 +61,50 @@ class HunterState {
   }
 
   get hunting() {
-    return this.data. hunting;
+    return this.data.hunting;
   }
 
   setLastClaim(username, channelId, accessHash) {
-    this. data.lastUsername = username;
-    this.data.lastChannelId = String(channelId);
-    this.data.lastAccessHash = String(accessHash);
+    this.data.lastUsername = username;
+    this.data.lastChannelId = channelId ? String(channelId) : null;
+    this.data.lastAccessHash = accessHash ? String(accessHash) : null;
     this.data.lastResult = null;
-    this. data.found++;
-    this. save();
+    this.data.found++;
+    this.save();
   }
 
   setResult(result) {
-    this.data. lastResult = result;
+    this.data.lastResult = result;
     this.save();
   }
 
   incrementChecked() {
-    this.data. checked++;
+    this.data.checked++;
+    this.save();
+  }
+
+  setManualWordlist(list) {
+    this.data.manualWordlist = Array.isArray(list) ? list : [];
+    this.save();
+  }
+
+  clearManualWordlist() {
+    this.data.manualWordlist = [];
+    this.save();
+  }
+
+  setAutoTakeTargets(list) {
+    this.data.autoTakeTargets = Array.isArray(list) ? list : [];
+    this.save();
+  }
+
+  clearAutoTakeTargets() {
+    this.data.autoTakeTargets = [];
+    this.save();
+  }
+
+  setAutoTakeActive(val) {
+    this.data.autoTakeActive = !!val;
     this.save();
   }
 
@@ -84,13 +112,16 @@ class HunterState {
     this.data.hunting = false;
     this.data.lastUsername = null;
     this.data.lastChannelId = null;
-    this. data.lastAccessHash = null;
+    this.data.lastAccessHash = null;
     this.data.lastResult = null;
+    this.data.manualWordlist = [];
+    this.data.autoTakeTargets = [];
+    this.data.autoTakeActive = false;
     this.save();
   }
 
   save() {
-    this.state[this. userId] = this. data;
+    this.state[this.userId] = this.data;
     saveState(this.state);
   }
 }
