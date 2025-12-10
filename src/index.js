@@ -12,7 +12,6 @@ const hunter = require('./handlers/hunter');
 const bot = new Bot(BOT_TOKEN);
 bot.use(session({ initial: () => ({}) }));
 
-// Restore session saat startup
 (function restoreSessions() {
   const saved = loadSessions();
   Object.keys(saved || {}).forEach((userId) => {
@@ -31,17 +30,12 @@ bot.use(session({ initial: () => ({}) }));
 
 bot.command('start', async (ctx) => {
   const txt = 
-`⚡ *SYSTEM ONLINE*
+`👋 *Halo, Komandan.*
 
-Selamat datang, Commander.
-*BotGC Prime* siap membantu manajemen aset Telegram Anda.
+Sistem manajemen *Grup* dan *Username Sniper* siap digunakan. 
+Silakan hubungkan akun Telegram Anda untuk memulai operasi.
 
-🔰 *Fitur Utama:*
-• _Mass Group Creation_
-• _Username Sniper & Claimer_
-• _Secure Session Management_
-
-Silakan pilih menu operasi di bawah ini.`;
+_👇 Ketuk menu di bawah untuk navigasi._`;
   
   await ctx.reply(txt, { 
     reply_markup: mainMenu(ctx), 
@@ -49,47 +43,45 @@ Silakan pilih menu operasi di bawah ini.`;
   });
 });
 
-// Status Dashboard
+// Status dengan gaya dashboard minimalis
 bot.command('status', async (ctx) => {
   const u = getUser(ctx.from.id);
   const acc = getAcc(ctx.from.id);
   const accountsCount = u.accounts.size;
   const current = acc ? { id: acc.id, authed: !!acc.authed } : null;
 
-  const statusIcon = current && current.authed ? '🟢 CONNECTED' : '🔴 DISCONNECTED';
-  const accIdDisplay = current ? `\`${current.id}\`` : '—';
+  const statusIcon = current && current.authed ? '🟢 TERHUBUNG' : '🔴 TERPUTUS';
 
   const txt = 
-`🖥️ *DASHBOARD STATUS*
-━━━━━━━━━━━━━━━━━━━━
-👤 *Operator:* ${ctx.from.first_name}
-🗃️ *Vault Akun:* ${accountsCount} Tersimpan
-🔑 *Sesi Aktif:* ${accIdDisplay}
-📡 *Jaringan:* ${statusIcon}
-━━━━━━━━━━━━━━━━━━━━`;
+`🖥 *STATUS SISTEM*
+──────────────
+👤 Pengguna : \`${ctx.from.first_name}\`
+📂 Akun Tersimpan : \`${accountsCount}\`
+🔑 ID Sesi : \`${current ? current.id : 'N/A'}\`
+📡 Koneksi : ${statusIcon}
+──────────────`;
 
   await ctx.reply(txt, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
 });
 
 bot.hears(MENU.help, async (ctx) => {
   const text =
-`📚 *MANUAL OPERASIONAL*
-━━━━━━━━━━━━━━━━━━━━
+`💡 *PANDUAN SISTEM*
+──────────────
 
-📂 *MODUL GRUP*
-🔹 *Batch List:* Input daftar nama, bot membuat grup sekaligus.
-🔹 *Sequence:* Input satu nama, bot membuat _prefix 1, prefix 2, dst_.
-✨ _Fitur:_ Auto-Invite Link & History Visible.
+🔹 *MANAJEMEN GRUP*
+• *${MENU.createFromList}*: Buat banyak grup sekaligus dari daftar teks.
+• *${MENU.createSequential}*: Buat grup dengan penomoran otomatis.
 
-🔭 *MODUL SNIPER*
-🔹 *Sniper Mode:* Mencari username 5-8 huruf (Rare/Brandable).
-🔹 *Auto Claim:* Jika tersedia, otomatis diamankan ke Channel Publik.
-🔹 *Database:* 100k+ kombinasi kata (EN/ID/Tech).
+🔹 *USERNAME SNIPER*
+• *${MENU.huntUsername}*: Cari username unik/langka secara otomatis.
+• *${MENU.stopHunt}*: Hentikan proses pencarian.
+• *${MENU.customWordlist}*: Gunakan kata kunci racikan sendiri.
+• *${MENU.autoTake}*: Pantau & klaim username target secara otomatis.
 
-⚠️ *Disclaimer:*
-_Gunakan tool ini dengan bijak. Risiko limitasi Telegram ditanggung pengguna._
+⚠️ _Gunakan fitur ini dengan bijak untuk menghindari pembatasan Telegram._
 
-🛠️ *Developer:* @stuaart`;
+Owner: @stuaart`;
 
   const effect = HELP_EFFECT_ID || MESSAGE_EFFECT_ID;
   const opts = { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' };
@@ -105,11 +97,11 @@ bot.callbackQuery('action:cancel', async (ctx) => {
   try { await ctx.answerCallbackQuery(); } catch {}
   try { ctx.session = null; } catch {}
   try { await ctx.deleteMessage(); } catch {}
-  await ctx.reply('🔙 *Operasi Dibatalkan.* Kembali ke standby.', { 
+  await ctx.reply('🔙 *Operasi Dibatalkan.*', { 
     reply_markup: mainMenu(ctx),
     parse_mode: 'Markdown' 
   });
 });
 
 bot.catch((e) => console.error('Bot error:', e));
-bot.start().then(() => console.log('✅ Bot started cleanly'));
+bot.start().then(() => console.log('✅ Bot started'));
