@@ -3,7 +3,6 @@ const path = require('path');
 
 const STATE_FILE = path.join(__dirname, '../../data/hunter-state.json');
 
-// Pastikan folder data ada
 function ensureDir() {
   const dir = path.dirname(STATE_FILE);
   if (!fs.existsSync(dir)) {
@@ -28,9 +27,6 @@ function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
 }
 
-/**
- * Hunter State per user
- */
 class HunterState {
   constructor(userId) {
     this.userId = String(userId);
@@ -41,7 +37,7 @@ class HunterState {
         lastUsername: null,
         lastChannelId: null,
         lastAccessHash: null,
-        lastResult: null, // 'accepted' | 'rejected' | null
+        lastResult: null,
         checked: 0,
         found: 0,
         manualWordlist: [],
@@ -51,18 +47,9 @@ class HunterState {
     }
   }
 
-  get data() {
-    return this.state[this.userId];
-  }
-
-  set hunting(val) {
-    this.data.hunting = val;
-    this.save();
-  }
-
-  get hunting() {
-    return this.data.hunting;
-  }
+  get data() { return this.state[this.userId]; }
+  set hunting(val) { this.data.hunting = val; this.save(); }
+  get hunting() { return this.data.hunting; }
 
   setLastClaim(username, channelId, accessHash) {
     this.data.lastUsername = username;
@@ -73,40 +60,15 @@ class HunterState {
     this.save();
   }
 
-  setResult(result) {
-    this.data.lastResult = result;
-    this.save();
-  }
+  setResult(result) { this.data.lastResult = result; this.save(); }
+  incrementChecked() { this.data.checked++; this.save(); }
 
-  incrementChecked() {
-    this.data.checked++;
-    this.save();
-  }
+  setManualWordlist(list) { this.data.manualWordlist = Array.isArray(list) ? list : []; this.save(); }
+  clearManualWordlist() { this.data.manualWordlist = []; this.save(); }
 
-  setManualWordlist(list) {
-    this.data.manualWordlist = Array.isArray(list) ? list : [];
-    this.save();
-  }
-
-  clearManualWordlist() {
-    this.data.manualWordlist = [];
-    this.save();
-  }
-
-  setAutoTakeTargets(list) {
-    this.data.autoTakeTargets = Array.isArray(list) ? list : [];
-    this.save();
-  }
-
-  clearAutoTakeTargets() {
-    this.data.autoTakeTargets = [];
-    this.save();
-  }
-
-  setAutoTakeActive(val) {
-    this.data.autoTakeActive = !!val;
-    this.save();
-  }
+  setAutoTakeTargets(list) { this.data.autoTakeTargets = Array.isArray(list) ? list : []; this.save(); }
+  clearAutoTakeTargets() { this.data.autoTakeTargets = []; this.save(); }
+  setAutoTakeActive(val) { this.data.autoTakeActive = !!val; this.save(); }
 
   reset() {
     this.data.hunting = false;
