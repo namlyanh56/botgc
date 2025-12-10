@@ -15,11 +15,11 @@ function normalizePhone(raw) {
 }
 
 module.exports = (bot) => {
-  // Login Trigger
+  // Login
   bot.hears(MENU.login, async (ctx) => {
     const current = getAcc(ctx.from.id);
     if (current?.authed) {
-      return ctx.reply('✅ *Akses Diberikan.* Akun Anda sudah terhubung.', { 
+      return ctx.reply('✅ *Akun Anda sudah terhubung.*', { 
         reply_markup: mainMenu(ctx), 
         parse_mode: 'Markdown' 
       });
@@ -31,20 +31,19 @@ module.exports = (bot) => {
     u.active = acc.id;
 
     const msg = 
-`🔐 *AUTHENTICATION GATEWAY*
+`🔐 *AUTENTIKASI DIPERLUKAN*
 
-Silakan verifikasi identitas Telegram Anda.
-Masukkan Nomor HP dengan format Internasional.
-_Contoh: +62812xxxx_
+Silakan kirim Nomor Telepon akun Telegram yang ingin dihubungkan.
+_Format: +628xxx_
 
-👇 *Opsi Cepat:* Gunakan tombol di bawah.`;
+Atau ketuk tombol di bawah untuk cara cepat & aman.`;
 
-    const kb = new Keyboard().requestContact('📲 Kirim Kontak Saya').resized();
+    const kb = new Keyboard().requestContact('📱 Kirim Kontak Saya').resized();
     ctx.session = { act: 'login_phone', id: acc.id };
     await ctx.reply(msg, { reply_markup: kb, parse_mode: 'Markdown' });
   });
 
-  // Logout Trigger
+  // Logout
   bot.hears(MENU.logout, async (ctx) => {
     const u = getUser(ctx.from.id);
     const acc = getAcc(ctx.from.id);
@@ -58,24 +57,24 @@ _Contoh: +62812xxxx_
       u.active = null;
     }
 
-    await ctx.reply('🔌 *Koneksi Terputus.* Sesi lokal telah dihapus dari memori.', {
+    await ctx.reply('🔌 *Koneksi Diputuskan.* Sesi lokal telah dihapus.', {
       reply_markup: mainMenu(ctx),
       parse_mode: 'Markdown'
     });
   });
 
-  // Handle Contact Share
+  // Handle contact share
   bot.on('message:contact', async (ctx, next) => {
     const s = ctx.session;
     if (!s || s.act !== 'login_phone') return next();
 
     const u = getUser(ctx.from.id);
     const acc = u.accounts.get(s.id);
-    if (!acc) return ctx.reply('❌ *Sesi Kedaluwarsa.* Silakan ulangi proses login.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    if (!acc) return ctx.reply('❌ Sesi kedaluwarsa. Ulangi proses.', { reply_markup: mainMenu(ctx) });
 
     const phone = normalizePhone(ctx.message.contact?.phone_number || '');
     if (!/^\+\d{8,15}$/.test(phone)) {
-      return ctx.reply('⚠️ *Format Invalid.* Gunakan format +62...', { 
+      return ctx.reply('⚠️ *Format Salah.* Gunakan format +62...', { 
         reply_markup: inlineCancelKb(),
         parse_mode: 'Markdown'
       });
@@ -88,7 +87,7 @@ _Contoh: +62812xxxx_
     });
   });
 
-  // Handle Manual Phone Text
+  // Handle text input
   bot.on('message:text', async (ctx, next) => {
     const s = ctx.session;
     if (!s) return next();
@@ -100,7 +99,7 @@ _Contoh: +62812xxxx_
     if (s.act === 'login_phone') {
       const phone = normalizePhone(ctx.message.text || '');
       if (!/^\+\d{8,15}$/.test(phone)) {
-        return ctx.reply('⚠️ *Format Invalid.* Gunakan format +62...', { 
+        return ctx.reply('⚠️ *Format Salah.* Gunakan format +62...', { 
           reply_markup: inlineCancelKb(),
           parse_mode: 'Markdown'
         });
