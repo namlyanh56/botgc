@@ -16,7 +16,11 @@ async function abortableSleep(controller, ms, step = 300) {
   }
 }
 function log(...a) { if (DEBUG) console.log('[Hunter]', ...a); }
-function isValidCandidate(u) { return /^[a-z][a-z0-9_]{3,}$/i.test(u) && u.length >= 5 && u.length <= 32; }
+
+// Validasi kandidat agar cocok aturan Telegram
+function isValidCandidate(u) {
+  return /^[a-z][a-z0-9_]{3,}$/i.test(u) && u.length >= 5 && u.length <= 32;
+}
 
 const activeHunts = new Map();
 const activeAutoTakes = new Map();
@@ -25,38 +29,37 @@ function getWordlist(userId) {
   if (!wordlists.has(userId)) wordlists.set(userId, new WordlistManager());
   return wordlists.get(userId);
 }
-function parseWordlistInput(text, { max = 100 } = {}) {
+
+function parseWordlistInput(text, { max = 50 } = {}) {
   const parts = String(text || '')
     .split(/[\n,]/)
     .map(s => s.trim().toLowerCase())
     .filter(Boolean);
   const uniq = [];
   for (const p of parts) {
-    if (!/^[a-z0-9_]{5,32}$/.test(p)) continue;
+    if (!/^[a-z]{5,32}$/.test(p)) continue;
     if (uniq.includes(p)) continue;
     uniq.push(p);
     if (uniq.length >= max) break;
   }
   return uniq;
 }
-function formatTargets(targets) {
-  if (!targets.length) return '❌ (kosong)';
-  return targets.map((t, i) => `${i + 1}) ${t}`).join(', ');
-}
 
 module.exports = (bot) => {
-  // Custom wordlist (untouched)
+  // Tambah custom wordlist
   bot.hears(MENU.customWordlist, async (ctx) => {
     const acc = getAcc(ctx.from.id);
-    if (!acc?.authed) return ctx.reply('🚫 *Akses Ditolak.* Silakan login dahulu.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    if (!acc?.authed) {
+      return ctx.reply('🚫 *Akses Ditolak.* Silakan hubungkan akun terlebih dahulu.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    }
     ctx.session = { act: 'set_manual_wordlist' };
     await ctx.reply(
-`📝 *CUSTOM WORDLIST MODE*
+`✍️ *MODE WORDLIST CUSTOM*
 
-Kirim kata minimal 5 huruf (a-z), maksimal 50 kata.
-Format: satu per baris *atau* dipisah koma.
+Kirimkan kata kunci (min 5 huruf, a-z), maksimal 50 kata.
+_Format: satu per baris atau dipisah koma._
 
-Contoh:
+*Contoh:*
 \`alpha
 galaxy
 garuda, fintech, vector\``,
@@ -64,20 +67,24 @@ garuda, fintech, vector\``,
     );
   });
 
-  // Start Sniper: pilih sumber
+  // Start Sniper (pilih sumber)
   bot.hears(MENU.huntUsername, async (ctx) => {
     const acc = getAcc(ctx.from.id);
-    if (!acc?.authed) return ctx.reply('🚫 *Akses Ditolak.* Silakan login dahulu.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    if (!acc?.authed) {
+      return ctx.reply('🚫 *Akses Ditolak.* Silakan hubungkan akun terlebih dahulu.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    }
 
     const state = new HunterState(ctx.from.id);
-    if (state.hunting) return ctx.reply('⚠️ *Scanner Active.* Stop dulu sebelum mulai baru.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    if (state.hunting) {
+      return ctx.reply('⚠️ *Scanner Sedang Aktif.* Harap hentikan proses sebelum memulai baru.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    }
 
     const hasManual = (state.data.manualWordlist || []).length > 0;
     const kb = new InlineKeyboard()
-      .text('🎯 Wordlist Bawaan', 'hunt:start:default')
-      .text(hasManual ? '📝 Wordlist Custom' : '❌ Custom Kosong', 'hunt:start:manual');
+      .text('📚 Database Bawaan', 'hunt:start:default')
+      .text(hasManual ? '📂 Database Custom' : '🚫 Custom Kosong', 'hunt:start:manual');
     await ctx.reply(
-      `📡 *PILIH SUMBER WORDLIST*\n\n• Bawaan: kombinasi EN/ID 5–8 huruf.\n• Custom: kata yang Anda tambah manual.`,
+      `📡 *PILIH SUMBER TARGET*\n\n• *Bawaan*: Kombinasi kata EN/ID 5–8 huruf.\n• *Custom*: Kata kunci yang Anda input manual.`,
       { reply_markup: kb, parse_mode: 'Markdown' }
     );
   });
@@ -86,14 +93,18 @@ garuda, fintech, vector\``,
     const mode = ctx.match[1];
     try { await ctx.answerCallbackQuery(); } catch {}
     const acc = getAcc(ctx.from.id);
-    if (!acc?.authed) return ctx.reply('🚫 *Akses Ditolak.* Silakan login dahulu.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    if (!acc?.authed) {
+      return ctx.reply('🚫 *Akses Ditolak.* Silakan hubungkan akun terlebih dahulu.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    }
 
     const state = new HunterState(ctx.from.id);
     const wl = getWordlist(ctx.from.id);
 
     if (mode === 'manual') {
       const manual = state.data.manualWordlist || [];
-      if (!manual.length) return ctx.reply('❌ Wordlist custom kosong. Tambahkan dulu lewat menu.', { reply_markup: mainMenu(ctx) });
+      if (!manual.length) {
+        return ctx.reply('❌ Wordlist custom kosong. Silakan isi melalui menu.', { reply_markup: mainMenu(ctx) });
+      }
       wl.setCustom(manual);
     } else {
       wl.setCustom(null);
@@ -102,79 +113,50 @@ garuda, fintech, vector\``,
     await startHunt(ctx, acc, state, wl);
   });
 
-  // Stop hanya menghentikan sniper (bukan auto-take)
+  // Stop
   bot.hears(MENU.stopHunt, async (ctx) => {
     const controller = activeHunts.get(ctx.from.id);
     if (controller) controller.abort = true;
     activeHunts.delete(ctx.from.id);
 
+    const autoCtl = activeAutoTakes.get(ctx.from.id);
+    if (autoCtl) autoCtl.abort = true;
+    activeAutoTakes.delete(ctx.from.id);
+
     const state = new HunterState(ctx.from.id);
     state.hunting = false;
+    state.setAutoTakeActive(false);
 
-    await ctx.reply('🛑 *Scanner dihentikan.* (Auto-take tetap berjalan jika ada target)', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    await ctx.reply('🛑 *Scanner Dihentikan.*', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
   });
 
-  // Auto Take submenu
+  // Auto Take
   bot.hears(MENU.autoTake, async (ctx) => {
     const acc = getAcc(ctx.from.id);
-    if (!acc?.authed) return ctx.reply('🚫 *Akses Ditolak.* Silakan login dahulu.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
-    const kb = new InlineKeyboard()
-      .text('📋 Lihat/Hapus', 'auto:list')
-      .text('➕ Tambah', 'auto:add');
-    await ctx.reply('🎯 *AUTO TAKE MENU*\nPilih aksi.', { reply_markup: kb, parse_mode: 'Markdown' });
-  });
-
-  bot.callbackQuery('auto:list', async (ctx) => {
-    try { await ctx.answerCallbackQuery(); } catch {}
-    const state = new HunterState(ctx.from.id);
-    const targets = state.data.autoTakeTargets || [];
-    const listStr = formatTargets(targets);
-    const kb = new InlineKeyboard().text('🗑 Hapus Target', 'auto:delstart');
-    await ctx.reply(`📋 *DAFTAR TARGET AUTO-TAKE*\n${listStr}\n\nKirim "Hapus Target" untuk menghapus.`, {
-      reply_markup: targets.length ? kb : undefined,
-      parse_mode: 'Markdown'
-    });
-  });
-
-  bot.callbackQuery('auto:delstart', async (ctx) => {
-    try { await ctx.answerCallbackQuery(); } catch {}
-    const state = new HunterState(ctx.from.id);
-    const targets = state.data.autoTakeTargets || [];
-    if (!targets.length) return ctx.reply('❌ Daftar kosong.', { reply_markup: mainMenu(ctx) });
-    ctx.session = { act: 'auto_take_delete' };
+    if (!acc?.authed) {
+      return ctx.reply('🚫 *Akses Ditolak.* Silakan hubungkan akun terlebih dahulu.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    }
+    ctx.session = { act: 'auto_take_list' };
     await ctx.reply(
-`🗑 *HAPUS TARGET*
+`⚡ *AUTO CLAIM MODE*
 
-Kirim nomor atau username yang mau dihapus (koma/baris).
-Contoh: \`1,3,alpha\``,
+Kirim daftar username target (5-32 karakter), max 50.
+_Format: per baris atau koma._
+
+Bot akan memantau terus menerus. Jika target tersedia, bot akan *otomatis* membuat channel publik & mengklaimnya.`,
       { reply_markup: inlineCancelKb(), parse_mode: 'Markdown' }
     );
   });
 
-  bot.callbackQuery('auto:add', async (ctx) => {
-    try { await ctx.answerCallbackQuery(); } catch {}
-    const state = new HunterState(ctx.from.id);
-    const current = state.data.autoTakeTargets || [];
-    if (current.length >= 100) return ctx.reply('⚠️ Sudah mencapai 100 target. Hapus dulu sebelum menambah.', { reply_markup: mainMenu(ctx) });
-    ctx.session = { act: 'auto_take_add' };
-    await ctx.reply(
-`➕ *TAMBAH TARGET AUTO-TAKE*
-
-Kirim daftar username (5-32 huruf/angka/_), dipisah koma atau baris.
-Maks total tersimpan: 100.`,
-      { reply_markup: inlineCancelKb(), parse_mode: 'Markdown' }
-    );
-  });
-
-  // CLAIM callback
+  // CLAIM: baru buat channel + set username sekali
   bot.callbackQuery('hunter:accept', async (ctx) => {
-    try { await ctx.answerCallbackQuery('✅ Claim...'); } catch {}
+    try { await ctx.answerCallbackQuery('✅ Memproses Claim...'); } catch {}
     const state = new HunterState(ctx.from.id);
     const acc = getAcc(ctx.from.id);
     const username = state.data.lastUsername;
 
     if (!acc?.authed || !username) {
-      return ctx.reply('❌ Sesi tidak valid atau belum login user.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+      return ctx.reply('❌ Sesi tidak valid atau pengguna belum login.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
     }
 
     try {
@@ -188,7 +170,7 @@ Maks total tersimpan: 100.`,
       }));
 
       const chan = (updates.chats || []).find(c => c.className === 'Channel' || c.title === username);
-      if (!chan) throw new Error('Channel tidak ditemukan setelah dibuat.');
+      if (!chan) throw new Error('Gagal membuat channel.');
 
       const inputChannel = new Api.InputChannel({ channelId: chan.id, accessHash: chan.accessHash });
 
@@ -204,13 +186,13 @@ Maks total tersimpan: 100.`,
 
       state.setLastClaim(username, chan.id, chan.accessHash);
       state.hunting = false;
-      state.clearManualWordlist();
+      state.clearManualWordlist(); // bersihkan jika memakai custom
 
       try { await ctx.deleteMessage(); } catch {}
-      await ctx.reply(`🎉 *ASSET SECURED*\nUsername: @${username}\nStatus: _Saved in account_`, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+      await ctx.reply(`🎉 *ASET DIAMANKAN*\nUsername: @${username}\nStatus: _Tersimpan di Akun_`, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
 
     } catch (e) {
-      await ctx.reply('❌ Claim gagal: ' + (e.message || e), { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+      await ctx.reply('❌ Gagal Klaim: ' + (e.message || e), { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
     } finally {
       const controller = activeHunts.get(ctx.from.id);
       if (controller) controller.abort = true;
@@ -218,11 +200,14 @@ Maks total tersimpan: 100.`,
     }
   });
 
+  // SKIP: langsung lanjut scanning (tanpa buat channel)
   bot.callbackQuery('hunter:reject', async (ctx) => {
-    try { await ctx.answerCallbackQuery('⏭️ Lanjut cari berikutnya'); } catch {}
+    try { await ctx.answerCallbackQuery('⏭️ Melewati...'); } catch {}
     const state = new HunterState(ctx.from.id);
     const acc = getAcc(ctx.from.id);
-    if (!acc?.authed) return ctx.reply('❌ Belum login user.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    if (!acc?.authed) {
+      return ctx.reply('❌ Belum login.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    }
 
     state.setResult('rejected');
     state.hunting = true;
@@ -234,73 +219,40 @@ Maks total tersimpan: 100.`,
     await huntLoop(ctx, acc, state, getWordlist(ctx.from.id), controller);
   });
 
-  // Text handlers
+  // Input handlers
   bot.on('message:text', async (ctx, next) => {
     const s = ctx.session;
     if (!s) return next();
     const acc = getAcc(ctx.from.id);
 
+    // Custom wordlist input
     if (s.act === 'set_manual_wordlist') {
-      const words = parseWordlistInput(ctx.message.text, { max: 50 }).filter(w => /^[a-z]{5,32}$/.test(w));
-      if (!words.length) return ctx.reply('⚠️ Tidak ada kata valid (min 5 huruf).', { reply_markup: inlineCancelKb(), parse_mode: 'Markdown' });
+      const words = parseWordlistInput(ctx.message.text, { max: 50 }).filter(w => isValidUsername(w));
+      if (!words.length) {
+        return ctx.reply('⚠️ Tidak ada kata valid (min 5 huruf).', { reply_markup: inlineCancelKb(), parse_mode: 'Markdown' });
+      }
       const state = new HunterState(ctx.from.id);
       state.setManualWordlist(words);
       ctx.session = null;
-      return ctx.reply(`✅ Wordlist custom tersimpan (${words.length} kata). Gunakan "Start Sniper" dan pilih *Custom*.`, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+      return ctx.reply(`✅ Wordlist custom disimpan (${words.length} kata).\nGunakan menu *"Cari Username"* lalu pilih *Custom*.`, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
     }
 
-    if (s.act === 'auto_take_add') {
-      const state = new HunterState(ctx.from.id);
-      const current = state.data.autoTakeTargets || [];
-      const capacity = Math.max(0, 100 - current.length);
-      if (capacity <= 0) {
-        ctx.session = null;
-        return ctx.reply('⚠️ Sudah 100 target. Hapus dulu sebelum menambah.', { reply_markup: mainMenu(ctx) });
+    // Auto take list input
+    if (s.act === 'auto_take_list') {
+      const list = parseWordlistInput(ctx.message.text, { max: 50 }).filter(u => isValidCandidate(u));
+      if (!list.length) {
+        return ctx.reply('⚠️ Tidak ada username valid (5-32, huruf/angka/_).', { reply_markup: inlineCancelKb(), parse_mode: 'Markdown' });
       }
-      const list = parseWordlistInput(ctx.message.text, { max: capacity }).filter(u => isValidCandidate(u));
-      if (!list.length) return ctx.reply('⚠️ Tidak ada username valid (5-32, huruf/angka/_).', { reply_markup: inlineCancelKb(), parse_mode: 'Markdown' });
-      const merged = Array.from(new Set([...current, ...list])).slice(0, 100);
-      state.setAutoTakeTargets(merged);
+      const state = new HunterState(ctx.from.id);
+      state.setAutoTakeTargets(list);
       state.setAutoTakeActive(true);
       ctx.session = null;
 
-      ensureAutoTakeLoop(ctx, acc, state);
-      return ctx.reply(`✅ Ditambah ${merged.length - current.length} target. Total: ${merged.length}. Auto-take aktif.`, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
-    }
+      const controller = { abort: false };
+      activeAutoTakes.set(ctx.from.id, controller);
+      autoTakeLoop(ctx, acc, state, controller).catch(e => console.error('AutoTake loop err:', e));
 
-    if (s.act === 'auto_take_delete') {
-      const state = new HunterState(ctx.from.id);
-      let targets = state.data.autoTakeTargets || [];
-      if (!targets.length) {
-        ctx.session = null;
-        return ctx.reply('❌ Daftar kosong.', { reply_markup: mainMenu(ctx) });
-      }
-
-      const tokens = parseWordlistInput(ctx.message.text, { max: targets.length * 2 });
-      const toDelete = new Set();
-
-      for (const t of tokens) {
-        if (/^\d+$/.test(t)) {
-          const idx = parseInt(t, 10) - 1;
-          if (idx >= 0 && idx < targets.length) toDelete.add(targets[idx]);
-        } else {
-          toDelete.add(t);
-        }
-      }
-
-      const before = targets.length;
-      targets = targets.filter(x => !toDelete.has(x));
-      state.setAutoTakeTargets(targets);
-      if (!targets.length) state.setAutoTakeActive(false);
-
-      ctx.session = null;
-      const removed = before - targets.length;
-      await ctx.reply(`🗑 ${removed} target dihapus. Sisa: ${targets.length}.`, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
-
-      if (targets.length) {
-        ensureAutoTakeLoop(ctx, acc, state); // pastikan loop jalan
-      }
-      return;
+      return ctx.reply(`⏳ *Auto-Claim Dimulai.*\nTarget: ${list.length} username.\nBot akan otomatis mengklaim saat tersedia.`, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
     }
 
     return next();
@@ -313,7 +265,7 @@ async function startHunt(ctx, acc, state, wordlist) {
   state.setResult(null);
 
   await ctx.reply(
-    `📡 *USERNAME SNIPER INITIATED*\n\n🎯 Target: \`${wordlist.remaining()} kata\`\n⏱️ Estimasi: ${wordlist.estimateTotal().toLocaleString()}+\n\n_Scanning network..._`,
+    `📡 *SCANNER DIINISIALISASI*\n\n🎯 Target: \`${wordlist.remaining()} kata\`\n⏱️ Estimasi: ${wordlist.estimateTotal().toLocaleString()}+\n\n_Menghubungkan ke jaringan..._`,
     { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' }
   );
 
@@ -329,21 +281,30 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
   let checked = 0;
   let statusMsgId = null;
 
-  try { const msg = await ctx.reply('🔍 *Scanning Network...*', { parse_mode: 'Markdown' }); statusMsgId = msg.message_id; } catch {}
+  try {
+    const msg = await ctx.reply('🔍 *Sedang Memindai...*', { parse_mode: 'Markdown' });
+    statusMsgId = msg.message_id;
+  } catch {}
 
   while (!controller.abort && state.hunting) {
     const username = wordlist.next();
     checked++;
     state.incrementChecked();
 
-    if (!isValidCandidate(username)) { log(`Skip invalid: ${username}`); continue; }
+    // Skip jika tidak valid menurut aturan Telegram
+    if (!isValidCandidate(username)) {
+      log(`Skip invalid: ${username}`);
+      continue;
+    }
+
+    log(`Checking: ${username} (${checked})`);
 
     if (checked % 10 === 0 && statusMsgId) {
       try {
         await ctx.api.editMessageText(
           userId,
           statusMsgId,
-          `📡 *SCANNING IN PROGRESS*\n━━━━━━━━━━━━━━━━\n🔍 Checked: \`${checked}\`\n📝 Current: \`${username}\`\n📊 Queue: \`${wordlist.remaining()}\`\n━━━━━━━━━━━━━━━━`,
+          `📡 *PROSES PEMINDAIAN*\n──────────────\n🔍 Diperiksa : \`${checked}\`\n📝 Target : \`${username}\`\n📊 Antrean : \`${wordlist.remaining()}\`\n──────────────`,
           { parse_mode: 'Markdown' }
         );
       } catch {}
@@ -352,36 +313,51 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
     if (controller.abort) break;
 
     try {
+      // Pastikan koneksi aktif
       const ok = await acc.ensureConnected();
-      if (!ok) { try { await acc.client.connect(); } catch (e) { log('connect fail:', e.message); } }
+      if (!ok) {
+        try { await acc.client.connect(); } catch (e) { log('connect fail:', e.message); }
+      }
       if (controller.abort) break;
 
       const available = await acc.client.invoke(new Api.account.CheckUsername({ username }));
       if (controller.abort) break;
 
       if (available === true) {
+        log(`AVAILABLE: ${username}`);
         state.setLastClaim(username, null, null);
         state.hunting = false;
 
-        if (statusMsgId) { try { await ctx.api.deleteMessage(userId, statusMsgId); } catch {} }
+        if (statusMsgId) {
+          try { await ctx.api.deleteMessage(userId, statusMsgId); } catch {}
+        }
 
-        const kb = new InlineKeyboard().text('✅ CLAIM', 'hunter:accept').text('❌ SKIP', 'hunter:reject');
+        const kb = new InlineKeyboard()
+          .text('✅ KLAIM SEKARANG', 'hunter:accept')
+          .text('❌ LEWATI', 'hunter:reject');
+
         await ctx.reply(
-          `💎 *USERNAME AVAILABLE!* 💎\n━━━━━━━━━━━━━━━━\nUsername: *@${username}*\nAttempt: #${checked}\n━━━━━━━━━━━━━━━━\n\nPilih aksi:`,
+          `💎 *USERNAME TERSEDIA!* 💎\n──────────────\nUsername: *@${username}*\nPercobaan: #${checked}\n──────────────\n\nPilih tindakan:`,
           { reply_markup: kb, parse_mode: 'Markdown' }
         );
 
         activeHunts.delete(userId);
         return;
+      } else {
+        log(`Taken: ${username}`);
       }
 
     } catch (e) {
       if (e.message && e.message.includes('FLOOD_WAIT')) {
         const waitMatch = e.message.match(/FLOOD_WAIT_(\d+)/);
         const waitTime = waitMatch ? parseInt(waitMatch[1], 10) : 30;
+
         if (statusMsgId) {
-          try { await ctx.api.editMessageText(userId, statusMsgId, `⏳ *Cooling Down...* (${waitTime}s)`, { parse_mode: 'Markdown' }); } catch {}
+          try {
+            await ctx.api.editMessageText(userId, statusMsgId, `⏳ *Sedang Pendingin...* (${waitTime}s)`, { parse_mode: 'Markdown' });
+          } catch {}
         }
+
         await abortableSleep(controller, waitTime * 1000);
         if (controller.abort) break;
         continue;
@@ -394,37 +370,34 @@ async function huntLoop(ctx, acc, state, wordlist, controller) {
     if (controller.abort) break;
   }
 
-  if (statusMsgId) { try { await ctx.api.deleteMessage(userId, statusMsgId); } catch {} }
+  if (statusMsgId) {
+    try { await ctx.api.deleteMessage(userId, statusMsgId); } catch {}
+  }
 
   if (!state.data.lastUsername) {
-    await ctx.reply(`⏹️ *Scan Complete.* Total checked: \`${checked}\``, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
-    state.clearManualWordlist();
-  } else if (controller.abort) {
-    await ctx.reply('⏹️ *Scan dihentikan.*', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    await ctx.reply(`⏹️ *Scan Selesai.* Total diperiksa: \`${checked}\``, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+    state.clearManualWordlist(); // clear custom after selesai
   }
 
   activeHunts.delete(userId);
 }
 
 // ----------- Auto Take loop -------------
-function ensureAutoTakeLoop(ctx, acc, state) {
-  if (activeAutoTakes.has(ctx.from.id)) return; // sudah jalan
-  const controller = { abort: false };
-  activeAutoTakes.set(ctx.from.id, controller);
-  autoTakeLoop(ctx, acc, state, controller).catch(e => console.error('AutoTake loop err:', e));
-}
-
 async function autoTakeLoop(ctx, acc, state, controller) {
   const delayMs = Math.max(DELAY_MS, 3000);
   let statusMsgId = null;
 
-  try { const msg = await ctx.reply('🎯 *Auto-Take Monitoring...*', { parse_mode: 'Markdown' }); statusMsgId = msg.message_id; } catch {}
+  try {
+    const msg = await ctx.reply('🎯 *Monitor Auto-Claim Aktif...*', { parse_mode: 'Markdown' });
+    statusMsgId = msg.message_id;
+  } catch {}
 
-  while (state.data.autoTakeActive) {
-    let targets = state.data.autoTakeTargets || [];
+  while (!controller.abort && state.data.autoTakeActive) {
+    const targets = state.data.autoTakeTargets || [];
     if (!targets.length) break;
 
     for (let i = targets.length - 1; i >= 0; i--) {
+      if (controller.abort || !state.data.autoTakeActive) break;
       const username = targets[i];
 
       try {
@@ -433,6 +406,8 @@ async function autoTakeLoop(ctx, acc, state, controller) {
 
         const available = await acc.client.invoke(new Api.account.CheckUsername({ username }));
         if (available === true) {
+          log(`AUTO-TAKE AVAILABLE: ${username}`);
+
           const updates = await acc.client.invoke(new Api.channels.CreateChannel({
             title: username,
             about: `Auto-claimed: @${username}`,
@@ -445,7 +420,10 @@ async function autoTakeLoop(ctx, acc, state, controller) {
 
           const inputChannel = new Api.InputChannel({ channelId: chan.id, accessHash: chan.accessHash });
           try {
-            await acc.client.invoke(new Api.channels.UpdateUsername({ channel: inputChannel, username }));
+            await acc.client.invoke(new Api.channels.UpdateUsername({
+              channel: inputChannel,
+              username
+            }));
           } catch (e) {
             try { await acc.client.invoke(new Api.channels.DeleteChannel({ channel: inputChannel })); } catch {}
             throw e;
@@ -453,24 +431,28 @@ async function autoTakeLoop(ctx, acc, state, controller) {
 
           targets.splice(i, 1);
           state.setAutoTakeTargets(targets);
-          await ctx.reply(`✅ *AUTO-TAKE BERHASIL*\nUsername: @${username}\nStatus: Disimpan di channel baru.`, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+          await ctx.reply(`✅ *AUTO-CLAIM BERHASIL*\nUsername: @${username}\nStatus: Disimpan di channel baru.`, { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
         }
       } catch (e) {
         log('AutoTake error:', e.message || e);
       }
 
-      await abortableSleep(controller, delayMs); // controller.abort tidak pernah diubah kecuali internal
+      if (controller.abort || !state.data.autoTakeActive) break;
+      await abortableSleep(controller, delayMs);
     }
+
+    if (!targets.length) break;
   }
 
-  if (statusMsgId) { try { await ctx.api.deleteMessage(ctx.from.id, statusMsgId); } catch {} }
+  if (statusMsgId) {
+    try { await ctx.api.deleteMessage(ctx.from.id, statusMsgId); } catch {}
+  }
 
-  const remaining = state.data.autoTakeTargets?.length || 0;
-  if (!remaining) state.setAutoTakeActive(false);
-  await ctx.reply(remaining ? 'ℹ️ Auto-take berhenti: masih ada target, loop akan jalan lagi jika dipicu.' : 'ℹ️ Auto-take selesai (target habis).', {
-    reply_markup: mainMenu(ctx),
-    parse_mode: 'Markdown'
-  });
-
+  state.setAutoTakeActive(false);
   activeAutoTakes.delete(ctx.from.id);
+  if (!(state.data.autoTakeTargets || []).length) {
+    await ctx.reply('ℹ️ Auto-Claim selesai / semua target habis.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+  } else {
+    await ctx.reply('⏹️ Auto-Claim dihentikan.', { reply_markup: mainMenu(ctx), parse_mode: 'Markdown' });
+  }
 }
